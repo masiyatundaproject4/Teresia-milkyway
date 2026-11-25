@@ -17,8 +17,8 @@ export class StudioView {
     this.hooks = { onBack, onWallet, onGoLive, onCreatePost, onOpenPost };
   }
 
-  open() {
-    this.#show('overview');
+  open(section = 'overview') {
+    this.#show(section);
   }
 
   stop() {

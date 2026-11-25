@@ -203,6 +203,11 @@ export class NovaMenu {
     if (await walletReady()) this.#wallet();
   }
 
+  async openStudioSection(section = 'overview') {
+    this.sheet.open();
+    await this.#studio(section);
+  }
+
   #screen(title, ...children) {
     this.sheet.title = title;
     this.content.replaceChildren(
@@ -407,7 +412,7 @@ export class NovaMenu {
   }
 
   // ---- MilkyWay Studio -------------------------------------------------------------------------------------
-  async #studio() {
+  async #studio(section = 'overview') {
     this.#screen(t('studio'));
     const { StudioView } = await import('./studio-view.js');
     this.studioView ||= new StudioView({
@@ -419,7 +424,7 @@ export class NovaMenu {
       onCreatePost: () => { this.sheet.close(); this.hooks.openStudioPost?.(); },
       onOpenPost: post => { this.sheet.close(); this.hooks.openStudioPost?.(post); },
     });
-    this.studioView.open();
+    this.studioView.open(section);
   }
 
   // ---- Email -----------------------------------------------------------------------------------------------

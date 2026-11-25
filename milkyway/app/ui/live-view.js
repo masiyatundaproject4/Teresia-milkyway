@@ -552,6 +552,21 @@ function streamControl(act, session, _button, slide) {
   return false;
 }
 
+async function copyLivePromotion(value) {
+  if (navigator.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(value); return; }
+    catch { /* Continue with the selection-based fallback. */ }
+  }
+  const field = h('textarea', { readonly: '', 'aria-hidden': 'true', tabindex: '-1' });
+  field.value = value;
+  field.style.cssText = 'position:fixed;inset:auto auto 0 0;width:1px;height:1px;opacity:0;font-size:16px';
+  document.body.append(field);
+  let copied = false;
+  try { field.focus({ preventScroll: true }); field.select(); copied = document.execCommand('copy'); }
+  finally { field.remove(); }
+  if (!copied) throw new Error(t('copyUnavailable'));
+}
+
 function voicePicker(session) {
   const sheet = new Sheet({ title: t('voiceChanger'), className: 'lc-sheet voice-picker-sheet' });
   const buttons = VOICE_PRESETS.map(preset => h('button', {
@@ -576,9 +591,9 @@ function voicePicker(session) {
 }
 
 export class LiveView {
-  constructor(root, { requireLogin, openGifts, openProfile, onClose, openRoom, listenLive, takeAmbientSession }) {
+  constructor(root, { requireLogin, openGifts, openProfile, onClose, openRoom, listenLive, takeAmbientSession, openServiceStudio }) {
     this.root = root;
-    this.hooks = { requireLogin, openGifts, openProfile, onClose, openRoom, listenLive, takeAmbientSession };
+    this.hooks = { requireLogin, openGifts, openProfile, onClose, openRoom, listenLive, takeAmbientSession, openServiceStudio };
     this.session = null;
     this.unbind = null;
     this.pending = null; // room to focus when the list arrives
@@ -1036,6 +1051,12 @@ export class LiveView {
     const close = h('button', { class: 'gl-close', type: 'button', 'aria-label': t('close'), onclick: () => sheet.close() }, '×');
     const rewardsSheet = new Sheet({ title: t('liveRewards'), className: 'lc-sheet gl-rewards-sheet', autoFocus: false });
     const readinessSheet = new Sheet({ title: t('liveRoomCheck'), className: 'lc-sheet gl-readiness-sheet', autoFocus: false });
+    const fanClubSheet = new Sheet({ title: t('fanClub'), className: 'lc-sheet gl-fan-club-sheet', autoFocus: false });
+    const interactSheet = new Sheet({ title: t('interact'), className: 'lc-sheet gl-interact-sheet', autoFocus: false });
+    const promoteSheet = new Sheet({ title: t('promote'), className: 'lc-sheet gl-promote-sheet', autoFocus: false });
+    const gamingSheet = new Sheet({ title: t('mobileGaming'), className: 'lc-sheet gl-gaming-sheet', autoFocus: false });
+    gamingSheet.body.append(h('section', { class: 'gl-panel-section' },
+      h('p', { class: 'gl-panel-note' }, t('liveFeatureUnavailable'))));
     const rewards = h('button', { class: 'gl-rewards', type: 'button', onclick: () => openRewards() }, '✦ ', t('liveRewards'));
     const readiness = h('button', { class: 'gl-readiness-button', type: 'button', 'aria-label': t('liveRoomCheck'), title: t('liveRoomCheck'), onclick: () => openReadiness() },
       h('span', { html: icon.live, 'aria-hidden': 'true' }));
@@ -1060,11 +1081,17 @@ export class LiveView {
       tool(t('effects'), '✦', event => togglePreviewEffect(event.currentTarget, 'effects-on')),
       tool(t('liveSettings'), '⚙', () => preliveSettings.open()),
       tool(t('multiGuest'), '♧', () => guestSheet.open()),
-      tool(t('servicePlus'), '✚', () => preliveSettings.open()),
-      tool(t('fanClub'), '♕', () => openRewards()),
-      tool(t('interact'), '♡', () => openRewards()),
+      tool(t('servicePlus'), '✚', async () => {
+        sheet.close();
+        try {
+          if (!this.hooks.openServiceStudio) throw new Error(t('studioServiceUnavailable'));
+          await this.hooks.openServiceStudio();
+        } catch (error) { toast(error?.message || t('studioServiceUnavailable')); }
+      }),
+      tool(t('fanClub'), '♕', () => openFanClub()),
+      tool(t('interact'), '♡', () => openInteract()),
       tool(t('share'), '↗', () => openPreliveShare()),
-      tool(t('promote'), '↟', () => openPreliveShare()));
+      tool(t('promote'), '↟', () => openPromotion()));
     const title = h('input', { class: 'gl-title', type: 'text', maxlength: '80', placeholder: t('liveTitle'), 'aria-label': t('liveTitle'), enterkeyhint: 'go' });
     const goalInput = h('input', { class: 'gl-goal-input', type: 'text', maxlength: '80', placeholder: t('liveGoalPlaceholder'), 'aria-label': t('liveGoalPlaceholder'), hidden: true });
     const goal = h('button', { class: 'gl-goal-button', type: 'button', onclick: () => {
@@ -1075,7 +1102,7 @@ export class LiveView {
     const start = h('button', { class: 'gl-start', type: 'submit' }, h('i', { class: 'gl-dot', 'aria-hidden': 'true' }), t('goLive'));
     const modes = [
       ['audio', t('voiceChat'), icon.mic],
-      ['video', t('deviceCamera'), icon.camera],
+      ['camera', t('deviceCamera'), icon.camera],
       ['gaming', t('mobileGaming'), '▣'],
       ['video', t('live'), '●'],
     ];
@@ -1083,7 +1110,7 @@ export class LiveView {
     const modeRow = h('div', { class: 'gl-mode-row', role: 'group', 'aria-label': t('goLive') },
       ...modes.map(([value, label, symbol], index) => {
         const button = h('button', { class: `gl-mode${index === 3 ? ' is-selected' : ''}`, type: 'button', 'aria-pressed': String(index === 3), onclick: () => {
-          if (value === 'gaming') { toast(t('liveFeatureUnavailable')); return; }
+          if (value === 'gaming') { gamingSheet.open(); return; }
           this.goMode = value;
           modeButtons.forEach(item => {
             const selected = item === button;
@@ -1097,19 +1124,21 @@ export class LiveView {
         modeButtons.push(button);
         return button;
       }));
+    const scopeSelect = h('select', { class: 'field', onchange: event => { scope = event.target.value; } },
+      h('option', { value: 'public' }, t('everyone')),
+      h('option', { value: 'followers' }, t('followersOnly')));
+    const commentsSelect = h('select', { class: 'field', onchange: event => { comments = event.target.value; } },
+      h('option', { value: 'everyone' }, t('commentsEveryone')),
+      h('option', { value: 'followers' }, t('commentsFollowers')),
+      h('option', { value: 'off' }, t('commentsOff')));
     const details = h('div', { class: 'gl-prelive-details', hidden: true },
       h('p', {}, t('livePreflightSettingsHint')),
-      h('label', {}, t('liveWhoCanWatch'), h('select', { class: 'field', onchange: event => { scope = event.target.value; } },
-        h('option', { value: 'public' }, t('everyone')),
-        h('option', { value: 'followers' }, t('followersOnly')))),
+      h('label', {}, t('liveWhoCanWatch'), scopeSelect),
       h('label', {}, t('admission'), h('select', { class: 'field', onchange: event => { admission = event.target.value; } },
         h('option', { value: 'approval' }, t('admissionApproval')),
         h('option', { value: 'open' }, t('admissionDirect')),
         h('option', { value: 'broadcast' }, t('admissionOff')))),
-      h('label', {}, t('comments2'), h('select', { class: 'field', onchange: event => { comments = event.target.value; } },
-        h('option', { value: 'everyone' }, t('commentsEveryone')),
-        h('option', { value: 'followers' }, t('commentsFollowers')),
-        h('option', { value: 'off' }, t('commentsOff')))));
+      h('label', {}, t('comments2'), commentsSelect));
     const preliveSettings = new Sheet({ title: t('liveSettings'), className: 'lc-sheet gl-prelive-settings', autoFocus: false });
     preliveSettings.body.append(details);
     details.hidden = false;
@@ -1129,6 +1158,63 @@ export class LiveView {
           readinessRow(t('liveAudience'), scope === 'followers' ? t('followersOnly') : t('everyone'), true)),
         h('p', { class: 'gl-panel-note' }, t('liveMicReadinessNote')));
       readinessSheet.open();
+    };
+    const openFanClub = () => {
+      const followersOnly = h('button', {
+        class: 'gl-panel-action', type: 'button', onclick: () => {
+          scope = 'followers';
+          scopeSelect.value = scope;
+          fanClubSheet.close();
+          toast(t('liveSettingsUpdated'));
+        },
+      }, t('liveFanClubFollowersOnly'));
+      fanClubSheet.body.replaceChildren(
+        h('section', { class: 'gl-panel-section' },
+          h('h3', {}, t('fanClub')),
+          h('p', { class: 'gl-panel-note' }, t('liveFanClubHint')),
+          followersOnly));
+      fanClubSheet.open();
+    };
+    const openInteract = () => {
+      const choices = [
+        ['everyone', t('commentsEveryone')],
+        ['followers', t('commentsFollowers')],
+        ['off', t('commentsOff')],
+      ];
+      interactSheet.body.replaceChildren(
+        h('section', { class: 'gl-panel-section' },
+          h('h3', {}, t('interact')),
+          h('p', { class: 'gl-panel-note' }, t('liveInteractHint')),
+          ...choices.map(([value, label]) => h('button', {
+            class: 'gl-panel-action', type: 'button', 'aria-pressed': String(comments === value),
+            onclick: () => {
+              comments = value;
+              commentsSelect.value = value;
+              interactSheet.close();
+              toast(t('liveSettingsUpdated'));
+            },
+          }, label))));
+      interactSheet.open();
+    };
+    const openPromotion = () => {
+      const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
+      const promo = h('textarea', { class: 'field area', readonly: '', 'aria-label': t('promote') });
+      promo.value = [t('livePromotionCopy'), title.value.trim(), link].filter(Boolean).join('\n');
+      const copy = h('button', { class: 'gl-panel-action', type: 'button', onclick: async () => {
+        copy.disabled = true;
+        try {
+          await copyLivePromotion(promo.value);
+          toast(t('linkCopied'));
+          promoteSheet.close();
+        } catch (error) { toast(error?.message || t('copyUnavailable')); }
+        finally { copy.disabled = false; }
+      } }, t('copyLink'));
+      promoteSheet.body.replaceChildren(
+        h('section', { class: 'gl-panel-section' },
+          h('h3', {}, t('promote')),
+          h('p', { class: 'gl-panel-note' }, t('livePromotionHint')),
+          promo, copy));
+      promoteSheet.open();
     };
     const openRewards = () => {
       const videoReady = this.goMode === 'audio' || hasCameraPreview();
@@ -1210,23 +1296,57 @@ export class LiveView {
       h('div', { class: 'gl-layout-heading' }, h('b', {}, t('guestLayout')), h('button', { class: 'gl-show-all', type: 'button', onclick: () => layoutCards.classList.toggle('show-all') }, t('showAll'))),
       layoutCards, autoAccept, audienceChoices));
     this.preGuestSheet = guestSheet;
-    const dock = h('nav', { class: 'gl-dock', 'aria-label': t('goLive') },
-      ...[[t('live'), 'selected', null], [t('camera'), '', 'camera'], [t('create'), '', 'create']].map(([label, state, target]) => h('button', {
-        type: 'button', class: `gl-dock-tab ${state}`, 'aria-current': state ? 'page' : null,
-        onclick: async () => {
-          if (!target) return;
-          if (!this.hooks.openStudio) {
-            toast(t('cameraAccessFailed'));
-            return;
-          }
-          try {
-            await this.hooks.openStudio(target);
-            sheet.close();
-          } catch (error) {
-            toast(String(error?.message || t('cameraAccessFailed')).replace(/\b(?:null|undefined)\b/gi, '').trim() || t('cameraAccessFailed'));
-          }
-        },
-      }, label)));
+    const dock = h('nav', { class: 'gl-dock', 'aria-label': t('goLive') });
+    const dockTabs = [
+      [t('live'), 'live'],
+      [t('camera'), 'camera'],
+      [t('create'), 'create'],
+    ].map(([label, target], index) => h('button', {
+      type: 'button', class: `gl-dock-tab${index === 0 ? ' selected' : ''}`, 'aria-current': index === 0 ? 'page' : null,
+      onclick: async () => {
+        if (target === 'live') {
+          this.goMode = 'video';
+          modeButtons.forEach((item, modeIndex) => {
+            const selected = modeIndex === 3;
+            item.classList.toggle('is-selected', selected);
+            item.setAttribute('aria-pressed', String(selected));
+          });
+          dockTabs.forEach((tab, tabIndex) => {
+            const selected = tabIndex === 0;
+            tab.classList.toggle('selected', selected);
+            if (selected) tab.setAttribute('aria-current', 'page');
+            else tab.removeAttribute('aria-current');
+          });
+          if (!this.goPreviewStream) void this.#startGoLivePreview('mode');
+          return;
+        }
+        if (target === 'camera') {
+          this.goMode = 'camera';
+          modeButtons.forEach((item, modeIndex) => {
+            const selected = modeIndex === 1;
+            item.classList.toggle('is-selected', selected);
+            item.setAttribute('aria-pressed', String(selected));
+          });
+        }
+        dockTabs.forEach((tab, tabIndex) => {
+          const selected = tabIndex === (target === 'camera' ? 1 : 2);
+          tab.classList.toggle('selected', selected);
+          if (selected) tab.setAttribute('aria-current', 'page');
+          else tab.removeAttribute('aria-current');
+        });
+        if (!this.hooks.openStudio) {
+          toast(t('cameraAccessFailed'));
+          return;
+        }
+        try {
+          await this.hooks.openStudio(target);
+          sheet.close();
+        } catch (error) {
+          toast(String(error?.message || t('cameraAccessFailed')).replace(/\b(?:null|undefined)\b/gi, '').trim() || t('cameraAccessFailed'));
+        }
+      },
+    }, label));
+    dock.append(...dockTabs);
     sheet.body.append(h('div', { class: 'gl-preview' }, this.goPreviewVideo,
       h('div', { class: 'gl-preview-overlay' }),
       h('header', { class: 'gl-topbar' }, close, h('div', { class: 'gl-top-actions' }, rewards, readiness, statusIcons)),

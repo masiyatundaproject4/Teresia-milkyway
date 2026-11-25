@@ -180,6 +180,7 @@ const liveView = lazy(() => import('./ui/live-view.js').then(m => new m.LiveView
   listenLive,
   takeAmbientSession,
   openStudio: view => composeSheet().then(sheet => sheet.open(view)),
+  openServiceStudio: () => novaMenu().then(menu => menu.openStudioSection('business')),
   openGifts: target => giftTray().then(tray => tray.open(target)),
 })));
 
