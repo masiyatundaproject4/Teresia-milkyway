@@ -201,11 +201,15 @@ export class ComposeSheet {
     this.stage = h('div', { class: 'creator-stage', 'data-mode': 'photo' }, this.cameraVideo, this.preview);
     this.stageMessage = h('div', { class: 'creator-stage-message', role: 'status', 'aria-live': 'polite' });
     this.textStage = h('div', { class: 'creator-text-stage', hidden: true });
+    this.photoEditor = this.#createPhotoEditor();
     this.captionWrap = h('label', { class: 'creator-caption-wrap' },
       h('span', { class: 'creator-caption-label' }, t('captionLabel')),
       this.caption, this.captionCount);
     this.creatorDetails = h('div', { class: 'creator-details', hidden: true });
     this.reviewPanel = h('section', { class: 'creator-review', hidden: true });
+    this.editorIndex = 0;
+    this.editorPointers = new Map();
+    this.editorPinch = null;
     this.createHub = h('section', { class: 'creator-hub', hidden: true });
     this.autoStyleNextSelection = false;
     this.modeButtons = [];
@@ -440,8 +444,8 @@ export class ComposeSheet {
     }, t('moreOptions'));
     this.detailsToggle = detailsToggle;
     const reviewBack = h('button', {
-      class: 'creator-review-back', type: 'button', onclick: () => this.#discardCapture(),
-    }, t('studioRetake'));
+      class: 'creator-review-back', type: 'button', onclick: () => this.#returnFromReview(),
+    }, t('studioReviewBack'));
     this.reviewBackButton = reviewBack;
     const cameraViewButton = h('button', {
       class: 'creator-view-mode is-selected', type: 'button', 'aria-pressed': 'true',
@@ -497,6 +501,7 @@ export class ComposeSheet {
     },
     h('header', { class: 'creator-header' }, closeButton, soundButton, createTitle, h('span', { class: 'creator-header-spacer', 'aria-hidden': 'true' })),
     this.mediaInput, this.audioInput,
+    this.photoEditor,
     h('div', { class: 'creator-stage-wrap' },
       this.stage, this.textStage, this.stageMessage,
       this.cameraSettingsPanel,
@@ -512,6 +517,383 @@ export class ComposeSheet {
     this.creatorDetails.append(
       h('div', { class: 'compose-assist' }, this.assist, this.style),
       h('section', { class: 'compose-card compose-schedule-card' }, scheduleLabel, this.scheduleDateWrap));
+  }
+
+  #createPhotoEditor() {
+    const filters = [
+      ['original', t('editorOriginal')],
+      ['galaxy', t('editorGalaxyGlow')],
+      ['vivid', t('editorVivid')],
+      ['warm', t('editorWarm')],
+      ['crisp', t('editorCrisp')],
+      ['mono', t('editorBlackWhite')],
+    ];
+    const stickers = ['✨', '🌙', '💫', '⭐'];
+    this.editorImage = h('img', { class: 'creator-photo-editor-image', alt: '', draggable: 'false' });
+    this.editorText = h('div', { class: 'creator-photo-editor-text', hidden: true });
+    this.editorIndexLabel = h('span', { class: 'creator-photo-editor-index', 'aria-live': 'polite' });
+    this.photoEditorMessage = h('p', { class: 'creator-photo-editor-message', role: 'status', 'aria-live': 'polite' });
+    this.editorZoom = h('input', {
+      class: 'creator-photo-editor-range', type: 'range', min: '1', max: '3', step: '0.01', value: '1',
+      'aria-label': t('cameraZoom'),
+      oninput: () => {
+        const edit = this.#photoEdit();
+        if (!edit) return;
+        edit.zoom = Number(this.editorZoom.value);
+        this.#paintPhotoEditor();
+      },
+    });
+    this.editorTextInput = h('input', {
+      class: 'creator-photo-editor-text-input', type: 'text', maxlength: '80',
+      placeholder: t('editorAddText'), 'aria-label': t('editorAddText'),
+      oninput: () => {
+        const edit = this.#photoEdit();
+        if (!edit) return;
+        edit.text = this.editorTextInput.value;
+        this.#paintPhotoEditor();
+      },
+    });
+    const frame = h('div', { class: 'creator-photo-editor-frame' }, this.editorImage, this.editorText, this.editorIndexLabel);
+    const filterButtons = filters.map(([filter, label]) => {
+      const button = h('button', {
+        class: 'creator-photo-editor-filter', type: 'button', dataset: { filter },
+        onclick: () => {
+          const edit = this.#photoEdit();
+          if (!edit) return;
+          edit.filter = filter;
+          this.#paintPhotoEditor();
+        },
+      }, label);
+      return button;
+    });
+    const adjustment = (key, label, min, max, initial) => {
+      const input = h('input', {
+        class: 'creator-photo-editor-range', type: 'range', min: String(min), max: String(max), value: String(initial),
+        'aria-label': label,
+        oninput: () => {
+          const edit = this.#photoEdit();
+          if (!edit) return;
+          edit[key] = Number(input.value);
+          this.#paintPhotoEditor();
+        },
+      });
+      return h('label', { class: 'creator-photo-editor-adjustment', dataset: { adjustment: key } }, h('span', {}, label), input);
+    };
+    const fitButton = h('button', {
+      class: 'creator-photo-editor-tool is-selected', type: 'button', 'aria-pressed': 'true',
+      onclick: () => {
+        const edit = this.#photoEdit();
+        if (!edit) return;
+        edit.fit = 'fit';
+        this.#paintPhotoEditor();
+      },
+    }, t('editorFit'));
+    const fillButton = h('button', {
+      class: 'creator-photo-editor-tool', type: 'button', 'aria-pressed': 'false',
+      onclick: () => {
+        const edit = this.#photoEdit();
+        if (!edit) return;
+        edit.fit = 'fill';
+        this.#paintPhotoEditor();
+      },
+    }, t('editorFill'));
+    this.editorFitButtons = { fit: fitButton, fill: fillButton };
+    const rotateButton = h('button', {
+      class: 'creator-photo-editor-tool', type: 'button',
+      onclick: () => {
+        const edit = this.#photoEdit();
+        if (!edit) return;
+        edit.rotation = (edit.rotation + 90) % 360;
+        this.#paintPhotoEditor();
+      },
+    }, `↻ ${t('editorRotate')}`);
+    const resetButton = h('button', {
+      class: 'creator-photo-editor-tool', type: 'button',
+      onclick: () => {
+        const edit = this.#photoEdit();
+        if (!edit) return;
+        Object.assign(edit, { zoom: 1, panX: 0, panY: 0, fit: 'fit', filter: 'original', brightness: 100, contrast: 100, saturation: 100, rotation: 0, text: '', textX: 50, textY: 50, sticker: '' });
+        this.#paintPhotoEditor();
+      },
+    }, t('editorReset'));
+    const stickerButton = h('button', {
+      class: 'creator-photo-editor-tool', type: 'button',
+      onclick: () => {
+        const edit = this.#photoEdit();
+        if (!edit) return;
+        const index = stickers.indexOf(edit.sticker);
+        edit.sticker = stickers[(index + 1) % stickers.length];
+        this.#paintPhotoEditor();
+      },
+    }, t('editorStickers'));
+    const removeButton = h('button', {
+      class: 'creator-photo-editor-tool is-danger', type: 'button',
+      onclick: () => this.#removePhoto(this.editorIndex),
+    }, t('remove'));
+    const closeButton = h('button', {
+      class: 'creator-photo-editor-close', type: 'button', 'aria-label': t('close'),
+      onclick: () => this.sheet.close(),
+    }, '×');
+    const soundButton = h('button', {
+      class: 'creator-photo-editor-sound', type: 'button',
+      onclick: () => this.#openSoundPicker(),
+    }, '♫ ', t('studioAddSound'));
+    const nextButton = h('button', {
+      class: 'creator-photo-editor-next', type: 'button',
+      onclick: () => { void this.#commitPhotoEdits(); },
+    }, t('editorNext'), '  ›');
+    this.photoEditorNext = nextButton;
+    const navigate = direction => {
+      if (this.files.length < 2) return;
+      this.editorIndex = (this.editorIndex + direction + this.files.length) % this.files.length;
+      this.#paintPhotoEditor();
+    };
+    this.editorPrevious = h('button', {
+      class: 'creator-photo-editor-nav', type: 'button', 'aria-label': t('previous'),
+      onclick: () => navigate(-1),
+    }, '‹');
+    this.editorNextPhoto = h('button', {
+      class: 'creator-photo-editor-nav', type: 'button', 'aria-label': t('next'),
+      onclick: () => navigate(1),
+    }, '›');
+    frame.addEventListener('pointerdown', event => {
+      if (event.target === this.editorText) return;
+      frame.setPointerCapture(event.pointerId);
+      this.editorPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const edit = this.#photoEdit();
+      if (!edit) return;
+      if (this.editorPointers.size === 2) {
+        const points = [...this.editorPointers.values()];
+        this.editorPinch = {
+          distance: Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y),
+          zoom: edit.zoom,
+        };
+        this.editorDrag = null;
+      } else this.editorDrag = { x: event.clientX, y: event.clientY, panX: edit.panX, panY: edit.panY };
+    });
+    frame.addEventListener('pointermove', event => {
+      if (!this.editorPointers.has(event.pointerId)) return;
+      this.editorPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const edit = this.#photoEdit();
+      if (!edit) return;
+      if (this.editorPointers.size > 1 && this.editorPinch) {
+        const points = [...this.editorPointers.values()];
+        const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+        edit.zoom = Math.max(1, Math.min(3, this.editorPinch.zoom * distance / (this.editorPinch.distance || distance)));
+        this.editorZoom.value = String(edit.zoom);
+      } else if (this.editorDrag) {
+        edit.panX = this.editorDrag.panX + event.clientX - this.editorDrag.x;
+        edit.panY = this.editorDrag.panY + event.clientY - this.editorDrag.y;
+      }
+      this.#paintPhotoEditor();
+    });
+    const endPointer = event => {
+      this.editorPointers.delete(event.pointerId);
+      if (this.editorPointers.size < 2) {
+        this.editorPinch = null;
+        const remaining = [...this.editorPointers.values()][0];
+        const edit = this.#photoEdit();
+        this.editorDrag = remaining && edit
+          ? { x: remaining.x, y: remaining.y, panX: edit.panX, panY: edit.panY }
+          : null;
+      }
+    };
+    frame.addEventListener('pointerup', endPointer);
+    frame.addEventListener('pointercancel', endPointer);
+    this.editorText.addEventListener('pointerdown', event => {
+      event.stopPropagation();
+      this.editorText.setPointerCapture(event.pointerId);
+      const rect = frame.getBoundingClientRect();
+      this.editorTextDrag = { pointerId: event.pointerId, rect };
+    });
+    this.editorText.addEventListener('pointermove', event => {
+      if (this.editorTextDrag?.pointerId !== event.pointerId) return;
+      const edit = this.#photoEdit();
+      if (!edit) return;
+      edit.textX = Math.max(0, Math.min(100, (event.clientX - this.editorTextDrag.rect.left) / this.editorTextDrag.rect.width * 100));
+      edit.textY = Math.max(0, Math.min(100, (event.clientY - this.editorTextDrag.rect.top) / this.editorTextDrag.rect.height * 100));
+      this.#paintPhotoEditor();
+    });
+    this.editorText.addEventListener('pointerup', () => { this.editorTextDrag = null; });
+    this.editorText.addEventListener('pointercancel', () => { this.editorTextDrag = null; });
+    return h('section', { class: 'creator-photo-editor', hidden: true, 'aria-label': t('editorPreview') },
+      h('header', { class: 'creator-photo-editor-header' }, closeButton, soundButton, nextButton),
+      h('div', { class: 'creator-photo-editor-stage' }, this.editorPrevious, frame, this.editorNextPhoto),
+      h('div', { class: 'creator-photo-editor-controls' },
+        h('div', { class: 'creator-photo-editor-filters', role: 'group', 'aria-label': t('editorFilters') }, ...filterButtons),
+        h('div', { class: 'creator-photo-editor-adjustments' },
+          adjustment('brightness', t('editorBrightness'), 50, 150, 100),
+          adjustment('contrast', t('editorContrast'), 50, 150, 100),
+          adjustment('saturation', t('editorSaturation'), 0, 200, 100)),
+        h('div', { class: 'creator-photo-editor-tools' },
+          h('label', { class: 'creator-photo-editor-zoom' }, h('span', {}, t('cameraZoom')), this.editorZoom),
+          fitButton, fillButton, rotateButton, resetButton, stickerButton, removeButton),
+        h('label', { class: 'creator-photo-editor-text-control' }, this.editorTextInput),
+        this.photoEditorMessage),
+      h('footer', { class: 'creator-photo-editor-footer' }, this.editorIndexLabel));
+  }
+
+  #photoEdit(entry = this.files[this.editorIndex]) {
+    if (!entry || entry.kind !== 'image') return null;
+    entry.edit ||= {
+      zoom: 1, panX: 0, panY: 0, fit: 'fit', filter: 'original',
+      brightness: 100, contrast: 100, saturation: 100, rotation: 0,
+      text: '', textX: 50, textY: 50, sticker: '',
+    };
+    return entry.edit;
+  }
+
+  #paintPhotoEditor() {
+    const entry = this.files[this.editorIndex];
+    if (!entry || entry.kind !== 'image') return;
+    const edit = this.#photoEdit(entry);
+    const filter = {
+      original: '',
+      galaxy: 'contrast(1.1) saturate(1.25) brightness(1.05)',
+      vivid: 'saturate(1.45) contrast(1.08)',
+      warm: 'sepia(.22) saturate(1.18)',
+      crisp: 'contrast(1.2) saturate(1.08)',
+      mono: 'grayscale(1) contrast(1.08)',
+    }[edit.filter] || '';
+    if (this.editorImage.src !== entry.url) this.editorImage.src = entry.url;
+    this.editorImage.style.objectFit = edit.fit === 'fill' ? 'cover' : 'contain';
+    this.editorImage.style.filter = `${filter} brightness(${edit.brightness}%) contrast(${edit.contrast}%) saturate(${edit.saturation}%)`;
+    this.editorImage.style.transform = `translate(calc(-50% + ${edit.panX}px), calc(-50% + ${edit.panY}px)) scale(${edit.zoom}) rotate(${edit.rotation}deg)`;
+    this.editorText.textContent = edit.text || edit.sticker;
+    this.editorText.hidden = !(edit.text || edit.sticker);
+    this.editorText.style.left = `${edit.textX}%`;
+    this.editorText.style.top = `${edit.textY}%`;
+    this.editorZoom.value = String(edit.zoom);
+    if (this.editorTextInput.value !== edit.text) this.editorTextInput.value = edit.text;
+    this.editorIndexLabel.textContent = this.files.length > 1 ? `${this.editorIndex + 1} / ${this.files.length}` : '';
+    this.editorPrevious.hidden = this.files.length < 2;
+    this.editorNextPhoto.hidden = this.files.length < 2;
+    this.photoEditor.querySelectorAll('.creator-photo-editor-filter').forEach(button => {
+      button.classList.toggle('is-selected', button.dataset.filter === edit.filter);
+      button.setAttribute('aria-pressed', String(button.dataset.filter === edit.filter));
+    });
+    for (const [fit, button] of Object.entries(this.editorFitButtons)) {
+      button.classList.toggle('is-selected', edit.fit === fit);
+      button.setAttribute('aria-pressed', String(edit.fit === fit));
+    }
+    this.photoEditor.querySelectorAll('.creator-photo-editor-adjustment input').forEach(input => {
+      const key = input.closest('.creator-photo-editor-adjustment').dataset.adjustment;
+      if (key) input.value = String(edit[key]);
+    });
+  }
+
+  #showPhotoEditor() {
+    if (!this.files.length || this.files.some(entry => entry.kind !== 'image')) return false;
+    this.editorIndex = Math.min(this.editorIndex, this.files.length - 1);
+    this.#leaveCameraView();
+    this.message.textContent = '';
+    this.stageMessage.textContent = '';
+    this.photoEditorMessage.textContent = '';
+    this.form.dataset.view = 'editor';
+    this.reviewPanel.hidden = true;
+    this.photoEditor.hidden = false;
+    this.createHub.hidden = true;
+    this.#paintPhotoEditor();
+    return true;
+  }
+
+  #returnFromReview() {
+    if (!this.#showPhotoEditor()) {
+      this.#backToCamera();
+      this.photoEditor.hidden = true;
+    }
+  }
+
+  async #commitPhotoEdits() {
+    if (!this.files.length || this.files.some(entry => entry.kind !== 'image') || this.mediaPending) return;
+    this.wait.start('photo-edit', t('processingMedia'));
+    this.photoEditorNext.disabled = true;
+    const editedFiles = [];
+    try {
+      for (const entry of this.files) {
+        const edit = this.#photoEdit(entry);
+        if (!edit || (edit.zoom === 1 && edit.panX === 0 && edit.panY === 0 && edit.fit === 'fit'
+          && edit.filter === 'original' && edit.brightness === 100 && edit.contrast === 100
+          && edit.saturation === 100 && edit.rotation === 0 && !edit.text && !edit.sticker)) continue;
+        const bitmap = await createImageBitmap(entry.file);
+        try {
+          const rotated = edit.rotation % 180 !== 0;
+          const orientedWidth = rotated ? bitmap.height : bitmap.width;
+          const orientedHeight = rotated ? bitmap.width : bitmap.height;
+          const frame = this.editorImage.parentElement.getBoundingClientRect();
+          const frameAspect = frame.width && frame.height ? frame.width / frame.height : orientedWidth / orientedHeight;
+          let outputWidth = orientedWidth;
+          let outputHeight = orientedHeight;
+          if (edit.fit === 'fill') {
+            if (orientedWidth / orientedHeight > frameAspect) outputWidth = Math.round(orientedHeight * frameAspect);
+            else outputHeight = Math.round(orientedWidth / frameAspect);
+          }
+          const outputScale = Math.min(1, 4096 / Math.max(outputWidth, outputHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(outputWidth * outputScale));
+          canvas.height = Math.max(1, Math.round(outputHeight * outputScale));
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error(t('photoCropFailed'));
+          const fitScale = edit.fit === 'fill'
+            ? Math.max(canvas.width / orientedWidth, canvas.height / orientedHeight)
+            : Math.min(canvas.width / orientedWidth, canvas.height / orientedHeight);
+          const scale = fitScale * edit.zoom;
+          const filter = {
+            original: '',
+            galaxy: 'contrast(1.1) saturate(1.25) brightness(1.05)',
+            vivid: 'saturate(1.45) contrast(1.08)',
+            warm: 'sepia(.22) saturate(1.18)',
+            crisp: 'contrast(1.2) saturate(1.08)',
+            mono: 'grayscale(1) contrast(1.08)',
+          }[edit.filter] || '';
+          context.filter = `${filter} brightness(${edit.brightness}%) contrast(${edit.contrast}%) saturate(${edit.saturation}%)`;
+          context.translate(canvas.width / 2, canvas.height / 2);
+          context.rotate(edit.rotation * Math.PI / 180);
+          context.drawImage(bitmap,
+            -bitmap.width * scale / 2 + edit.panX / Math.max(1, frame.width) * canvas.width,
+            -bitmap.height * scale / 2 + edit.panY / Math.max(1, frame.height) * canvas.height,
+            bitmap.width * scale, bitmap.height * scale);
+          const text = edit.text || edit.sticker;
+          if (text) {
+            context.setTransform(1, 0, 0, 1, 0, 0);
+            context.filter = 'none';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.font = `700 ${Math.max(28, Math.round(canvas.width * .07))}px sans-serif`;
+            context.lineWidth = Math.max(3, Math.round(canvas.width * .006));
+            context.strokeStyle = 'rgba(0,0,0,.68)';
+            context.fillStyle = '#fff';
+            const x = canvas.width * edit.textX / 100;
+            const y = canvas.height * edit.textY / 100;
+            context.strokeText(text, x, y, canvas.width * .82);
+            context.fillText(text, x, y, canvas.width * .82);
+          }
+          const blob = await canvasToBlob(canvas, entry.file.type || 'image/jpeg', 0.94);
+          const file = new File([blob], entry.file.name, { type: blob.type });
+          if (file.size > MAX_IMAGE) throw new Error(t('imageTooBig'));
+          editedFiles.push({ entry, file, url: URL.createObjectURL(file) });
+        } finally {
+          bitmap.close();
+        }
+      }
+      for (const { entry, file, url } of editedFiles) {
+        const originalUrl = entry.url;
+        entry.file = file;
+        entry.url = url;
+        delete entry.edit;
+        URL.revokeObjectURL(originalUrl);
+      }
+      this.#renderPreview();
+      this.photoEditor.hidden = true;
+      this.#showReview();
+    } catch (error) {
+      editedFiles.forEach(({ url }) => URL.revokeObjectURL(url));
+      console.error('[compose] photo editing could not be applied', error);
+      this.photoEditorMessage.textContent = readableError(error, t('photoCropFailed'));
+    } finally {
+      this.photoEditorNext.disabled = false;
+      this.wait.stop('photo-edit');
+    }
   }
 
   open(view = 'camera') {
@@ -562,17 +944,39 @@ export class ComposeSheet {
 
   #showReview() {
     if (this.form.dataset.view !== 'review') this.reviewReturnMode = this.form.dataset.mode || 'camera';
-    this.reviewBackButton.textContent = this.files.length ? `‹ ${t('studioRetake')}` : `‹ ${t('studioReviewBack')}`;
+    this.reviewBackButton.textContent = `‹ ${t('studioReviewBack')}`;
     if (this.captureMode === 'text') this.reviewPanel.insertBefore(this.captionWrap, this.audioBar);
     this.form.dataset.view = 'review';
     this.reviewPanel.hidden = false;
+    this.photoEditor.hidden = true;
     this.createHub.hidden = true;
+  }
+
+  #renderPreview() {
+    this.preview.replaceChildren();
+    for (const [index, entry] of this.files.entries()) {
+      const media = entry.kind === 'video'
+        ? h('video', { src: entry.url, controls: true, playsinline: true, muted: true, preload: 'metadata' })
+        : h('img', { src: entry.url, alt: `${t('slide')} ${index + 1}` });
+      this.preview.append(h('div', { class: 'compose-photo' }, media,
+        h('span', { class: 'compose-photo-index' }, String(index + 1)),
+        h('button', { class: 'link', type: 'button', 'aria-label': `${t('remove')} ${index + 1}`, onclick: () => this.#removePhoto(index) }, t('remove'))));
+    }
+    if (this.files.length > 1 && this.files.every(entry => entry.kind === 'image')) {
+      this.preview.prepend(h('small', { class: 'muted compose-count' }, `${this.files.length} ${t('photosInSlideshow')}`));
+    }
+  }
+
+  #showCurrentMediaStep() {
+    if (this.files.length && this.files.every(entry => entry.kind === 'image')) this.#showPhotoEditor();
+    else this.#showReview();
   }
 
   #backToCamera() {
     this.form.dataset.mode = this.reviewReturnMode === 'create' ? 'create' : 'camera';
     this.form.dataset.view = 'camera';
     this.reviewPanel.hidden = true;
+    this.photoEditor.hidden = true;
     this.createHub.hidden = this.form.dataset.mode !== 'create';
     if (this.captureMode === 'text') this.textStage.append(this.captionWrap);
   }
@@ -998,9 +1402,15 @@ export class ComposeSheet {
     try { openFilePicker(input); }
     catch (error) {
       if (input === this.mediaInput) this.autoStyleNextSelection = false;
-      this.message.textContent = readableError(error, t('mediaPickerUnavailable'));
-      this.#showReview();
+      this.#showMediaError(readableError(error, t('mediaPickerUnavailable')));
     }
+  }
+
+  #showMediaError(message) {
+    this.photoEditor.hidden = true;
+    this.reviewPanel.hidden = true;
+    this.form.dataset.view = 'camera';
+    this.stageMessage.textContent = message;
   }
 
   #releaseMedia(invalidate = true) {
@@ -1019,6 +1429,10 @@ export class ComposeSheet {
     const applyAutoStyle = this.autoStyleNextSelection;
     this.autoStyleNextSelection = false;
     this.#releaseMedia(false);
+    this.photoEditor.hidden = true;
+    this.reviewPanel.hidden = true;
+    this.form.dataset.view = 'camera';
+    this.stageMessage.textContent = '';
     this.mediaPending = false;
     if (!this.publishing && !this.audioPending) this.submit.disabled = false;
     this.mediaInput.value = '';
@@ -1028,7 +1442,6 @@ export class ComposeSheet {
       if (!this.audioFile) this.#backToCamera();
       return;
     }
-    this.#showReview();
     this.message.textContent = t('loading');
     this.mediaPending = true;
     this.submit.disabled = true;
@@ -1043,53 +1456,49 @@ export class ComposeSheet {
         this.message.textContent = '';
       },
     });
-    let entries;
+    let ready = false;
     try {
-      entries = await Promise.all(files.map(async file => ({
+      const entries = await Promise.all(files.map(async file => ({
         file,
         ...(await withTimeout(identifyMediaFile(file), MEDIA_PREPARATION_TIMEOUT, t('mediaPreparationTimeout'))),
       })));
+      if (selection !== this.mediaSelection) return;
+      const videos = entries.filter(entry => entry.kind === 'video');
+      if (entries.some(entry => entry.kind === 'unknown' || entry.kind === 'audio')) throw new Error(t('mediaType'));
+      if (videos.length && (files.length > 1 || videos.length > 1)) throw new Error(t('oneVideoOnly'));
+      if (files.length > MAX_PHOTOS) throw new Error(t('slideshowPhotoLimit'));
+      const video = videos.length === 1;
+      for (const entry of entries) {
+        if ((!video && entry.kind !== 'image') || (video && entry !== videos[0])) throw new Error(t('mediaType'));
+        if (entry.file.size > (video ? MAX_VIDEO : MAX_IMAGE)) throw new Error(video ? t('videoTooBig') : t('imageTooBig'));
+      }
+      this.files = entries.map(entry => ({ ...entry, url: URL.createObjectURL(entry.file) }));
+      this.message.textContent = '';
+      this.stage.classList.add('has-media');
+      this.#renderPreview();
+      if (!video) {
+        const images = [...this.preview.querySelectorAll('img')];
+        await Promise.all(images.map(image => withTimeout(image.decode(), MEDIA_PREPARATION_TIMEOUT, t('mediaPreparationTimeout'))
+          .catch(error => { console.warn('[compose] selected photo preview could not be decoded yet', error); })));
+      }
+      if (selection !== this.mediaSelection) return;
+      ready = true;
     } catch (error) {
-      if (selection === this.mediaSelection) this.message.textContent = readableError(error, t('mediaType'));
-      return;
+      if (selection === this.mediaSelection) {
+        this.#releaseMedia(false);
+        this.#showMediaError(readableError(error, t('mediaType')));
+      }
     } finally {
       if (selection === this.mediaSelection) {
         this.mediaPending = false;
-        if (!this.publishing && !this.audioPending) this.submit.disabled = false;
         this.wait.stop(waitKey);
+        if (!this.publishing && !this.audioPending) this.submit.disabled = false;
       }
     }
-    if (selection !== this.mediaSelection) return;
-    const videos = entries.filter(entry => entry.kind === 'video');
-    if (entries.some(entry => entry.kind === 'unknown' || entry.kind === 'audio')) { this.message.textContent = t('mediaType'); return; }
-    if (videos.length && (files.length > 1 || videos.length > 1)) { this.message.textContent = t('oneVideoOnly'); return; }
-    if (files.length > MAX_PHOTOS) { this.message.textContent = t('slideshowPhotoLimit'); return; }
-    const video = videos.length === 1;
-    for (const entry of entries) {
-      if ((!video && entry.kind !== 'image') || (video && entry !== videos[0])) { this.message.textContent = t('mediaType'); return; }
-      if (entry.file.size > (video ? MAX_VIDEO : MAX_IMAGE)) { this.message.textContent = video ? t('videoTooBig') : t('imageTooBig'); return; }
-    }
-    try {
-      this.files = entries.map(entry => ({ ...entry, url: URL.createObjectURL(entry.file) }));
-    } catch (error) {
-      this.#releaseMedia(false);
-      this.message.textContent = readableError(error, t('mediaPickerUnavailable'));
-      return;
-    }
-    this.message.textContent = '';
-    this.stage.classList.add('has-media');
-    for (const [index, entry] of this.files.entries()) {
-      const media = video
-        ? h('video', { src: entry.url, controls: true, playsinline: true, muted: true, preload: 'metadata' })
-        : h('img', { src: entry.url, alt: `${t('slide')} ${index + 1}` });
-      this.preview.append(h('div', { class: 'compose-photo' }, media,
-        h('span', { class: 'compose-photo-index' }, String(index + 1)),
-        h('button', { class: 'link', type: 'button', 'aria-label': `${t('remove')} ${index + 1}`, onclick: () => this.#removePhoto(index) }, t('remove'))));
-    }
-    if (!video && files.length > 1) this.preview.prepend(h('small', { class: 'muted compose-count' }, `${files.length} ${t('photosInSlideshow')}`));
-    this.#showReview();
+    if (!ready || selection !== this.mediaSelection) return;
+    this.#showCurrentMediaStep();
     if (applyAutoStyle) {
-      if (!video && this.files.length > 1) await this.#autoStyle();
+      if (this.files.length > 1) await this.#autoStyle();
       else this.message.textContent = t('pickSlideshowFirst');
     }
   }
@@ -1097,7 +1506,16 @@ export class ComposeSheet {
   #removePhoto(index) {
     const [removed] = this.files.splice(index, 1);
     if (removed) URL.revokeObjectURL(removed.url);
-    this.#pickMedia(this.files.map(entry => entry.file));
+    if (!this.files.length) {
+      this.#releaseMedia();
+      this.photoEditor.hidden = true;
+      this.#backToCamera();
+      if (this.form.dataset.mode !== 'create') void this.#startCamera();
+      return;
+    }
+    this.editorIndex = Math.min(index, this.files.length - 1);
+    this.#renderPreview();
+    this.#showPhotoEditor();
   }
 
   #readSoundList(name) {
@@ -1343,7 +1761,7 @@ export class ComposeSheet {
       h('button', { class: 'link', type: 'button', onclick: () => this.#pickAudio(null) }, t('remove')));
     this.audioBar.hidden = false;
     this.message.textContent = '';
-    this.#showReview();
+    this.#showCurrentMediaStep();
   }
 
   #openSoundTrim(track) {
@@ -1436,7 +1854,7 @@ export class ComposeSheet {
       this.wait.stop('audio');
       return;
     }
-    this.#showReview();
+    this.#showCurrentMediaStep();
     this.audioPending = true;
     this.submit.disabled = true;
     this.wait.start('audio', t('preparingMedia'), {
@@ -1473,7 +1891,7 @@ export class ComposeSheet {
     this.audioPreview.append(h('audio', { src: this.audioUrl, controls: true, preload: 'metadata' }),
       h('button', { class: 'link', type: 'button', onclick: () => this.#pickAudio(null) }, t('remove')));
     this.message.textContent = '';
-    this.#showReview();
+    this.#showCurrentMediaStep();
   }
 
   async #autoStyle() {

@@ -1071,6 +1071,60 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .creator-template-preview.style-page { background: linear-gradient(110deg, #8b6fca, #282047 48%, #12132f 50%); }
 .creator-template-preview.style-slide { background: linear-gradient(125deg, #28204d 25%, #9270d8 26% 48%, #182543 49%); }
 .creator-template small { overflow: hidden; color: rgba(235,229,255,.9); font-size: 12px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+.creator-photo-editor {
+  position: absolute; z-index: 40; inset: 0; display: grid;
+  grid-template-rows: 44px minmax(96px, 1fr) minmax(150px, 36dvh) 16px;
+  gap: 8px; width: 100%; height: 100dvh;
+  padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 8px);
+  overflow: hidden; background: url("../galaxy-starfield.svg") center / 420px 490px repeat,
+    radial-gradient(80% 55% at 50% 12%, rgba(86,61,155,.34), transparent 76%),
+    linear-gradient(160deg, #090b26, #050615 72%); color: #f7f3ff;
+}
+.creator-photo-editor[hidden] { display: none; }
+.creator-photo-editor-header { display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 8px; min-width: 0; }
+.creator-photo-editor-close,
+.creator-photo-editor-sound,
+.creator-photo-editor-next,
+.creator-photo-editor-nav,
+.creator-photo-editor-tool,
+.creator-photo-editor-filter {
+  min-height: 32px; border: 1px solid rgba(205,187,255,.2); border-radius: 99px;
+  background: rgba(12,13,38,.78); color: #f5f0ff; box-shadow: none; text-shadow: none;
+}
+.creator-photo-editor-close { display: grid; width: 38px; height: 38px; place-items: center; font-size: 24px; }
+.creator-photo-editor-sound { justify-self: center; padding: 0 12px; font-size: 10px; white-space: nowrap; }
+.creator-photo-editor-next { padding: 0 14px; background: linear-gradient(120deg, #7950c3, #396ba9); font-size: 11px; font-weight: 800; }
+.creator-photo-editor-stage { position: relative; display: grid; grid-template-columns: 30px minmax(0,1fr) 30px; align-items: center; gap: 4px; min-height: 0; }
+.creator-photo-editor-frame { position: relative; display: grid; width: 100%; height: 100%; min-height: 0; place-items: center; overflow: hidden; border: 1px solid rgba(204,186,255,.15); border-radius: 18px; background: rgba(4,5,17,.62); touch-action: none; }
+.creator-photo-editor-image { position: absolute; top: 50%; left: 50%; width: 100%; height: 100%; max-width: 100%; max-height: 100%; user-select: none; -webkit-user-drag: none; will-change: transform, filter; transition: transform .12s ease-out, filter .12s ease-out; }
+.creator-photo-editor-text { position: absolute; z-index: 2; max-width: 84%; padding: 4px 8px; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 850; line-height: 1.15; text-align: center; overflow-wrap: anywhere; -webkit-text-stroke: 1px rgba(0,0,0,.62); text-shadow: 0 2px 8px rgba(0,0,0,.8); transform: translate(-50%,-50%); touch-action: none; }
+.creator-photo-editor-text[hidden] { display: none; }
+.creator-photo-editor-index { position: absolute; z-index: 3; right: 9px; bottom: 8px; padding: 3px 7px; border-radius: 99px; background: rgba(4,5,17,.7); color: rgba(245,240,255,.82); font-size: 9px; }
+.creator-photo-editor-nav { display: grid; width: 28px; height: 34px; min-height: 34px; place-items: center; padding: 0; font-size: 22px; }
+.creator-photo-editor-nav[hidden] { display: none; }
+.creator-photo-editor-controls { display: grid; align-content: start; gap: 8px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(184,154,255,.28) transparent; }
+.creator-photo-editor-filters,
+.creator-photo-editor-tools { display: flex; align-items: center; gap: 5px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; }
+.creator-photo-editor-filters::-webkit-scrollbar,
+.creator-photo-editor-tools::-webkit-scrollbar { display: none; }
+.creator-photo-editor-filter,
+.creator-photo-editor-tool { flex: none; min-height: 29px; padding: 0 9px; font-size: 9px; white-space: nowrap; }
+.creator-photo-editor-filter.is-selected,
+.creator-photo-editor-tool.is-selected { border-color: rgba(210,186,255,.55); background: rgba(128,87,198,.48); }
+.creator-photo-editor-tool.is-danger { color: #ffb6c4; }
+.creator-photo-editor-adjustments { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.creator-photo-editor-adjustment { display: grid; gap: 3px; min-width: 0; color: rgba(238,232,255,.72); font-size: 9px; }
+.creator-photo-editor-adjustment input,
+.creator-photo-editor-zoom input { width: 100%; min-width: 0; accent-color: #b89aff; }
+.creator-photo-editor-zoom { display: grid; grid-template-columns: auto minmax(58px,1fr); align-items: center; gap: 6px; flex: 0 0 130px; color: rgba(238,232,255,.72); font-size: 9px; }
+.creator-photo-editor-text-control { display: block; min-width: 0; }
+.creator-photo-editor-text-input { width: 100%; min-height: 34px; padding: 0 10px; border: 1px solid rgba(190,174,255,.2); border-radius: 10px; outline: 0; background: rgba(7,9,30,.82); color: #fff; font-size: 11px; }
+.creator-photo-editor-message { margin: 0; color: #ffd2dc; font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; }
+.creator-photo-editor-footer { display: flex; align-items: center; justify-content: center; color: rgba(236,230,255,.58); font-size: 9px; }
+.creator-form[data-view="editor"] > .creator-mode-row,
+.creator-form[data-view="editor"] > .creator-capture-row,
+.creator-form[data-view="editor"] > .creator-bottom-dock,
+.creator-form[data-view="editor"] .creator-tool-rail { display: none; }
 .creator-review {
   position: absolute; z-index: 9; inset: auto 0 0; display: grid; gap: 12px;
   max-height: calc(100dvh - env(safe-area-inset-top) - 64px); overflow-y: auto;
@@ -1087,6 +1141,15 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .creator-review .creator-details { max-height: none; overflow: visible; }
 .creator-review .creator-details-toggle { justify-self: center; padding: 6px 10px; }
 .creator-review .creator-submit-area { position: sticky; bottom: calc(-1 * env(safe-area-inset-bottom)); margin: 0 -16px calc(-1 * env(safe-area-inset-bottom)); padding: 10px 16px calc(env(safe-area-inset-bottom) + 8px); background: linear-gradient(180deg, rgba(13,15,46,.86), rgba(7,8,24,.99)); }
+@media (max-height: 650px) {
+  .creator-photo-editor {
+    grid-template-rows: 38px minmax(72px, 1fr) minmax(124px, 38dvh) 12px;
+    gap: 5px; padding-top: calc(env(safe-area-inset-top) + 5px); padding-bottom: calc(env(safe-area-inset-bottom) + 5px);
+  }
+  .creator-photo-editor-close { width: 34px; height: 34px; }
+  .creator-photo-editor-adjustments { gap: 5px; }
+  .creator-photo-editor-controls { gap: 5px; }
+}
 @media (max-height: 650px) {
   .creator-mode-row { bottom: calc(env(safe-area-inset-bottom) + 132px); }
   .creator-capture-row { bottom: calc(env(safe-area-inset-bottom) + 64px); }
