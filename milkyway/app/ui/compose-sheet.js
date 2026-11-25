@@ -463,6 +463,7 @@ export class ComposeSheet {
     const createViewButton = h('button', {
       class: 'creator-view-mode', type: 'button', 'aria-pressed': 'false',
       onclick: () => {
+        this.#leaveCameraView();
         this.form.dataset.mode = 'create';
         this.createHub.hidden = false;
         createViewButton.classList.add('is-selected');
@@ -554,7 +555,9 @@ export class ComposeSheet {
     this.preview.replaceChildren();
     this.stage.classList.remove('has-media');
     this.sheet.open();
-    if (!showCreate) void this.#startCamera();
+    if (showCreate) {
+      this.#leaveCameraView();
+    } else void this.#startCamera();
   }
 
   #showReview() {
@@ -584,27 +587,35 @@ export class ComposeSheet {
   async #startCamera() {
     if (this.cameraStream || this.cameraStarting || !this.sheet.isOpen) return;
     if (!navigator.mediaDevices?.getUserMedia) {
-      this.#showCameraFallback(t('cameraAccessFailed'));
-      this.#openPicker(this.mediaInput);
+      this.#showCameraFallback();
       return;
     }
     this.cameraStarting = true;
     const request = ++this.cameraRequest;
-    this.wait.start('camera', t('preparingCamera'), {
-      onCancel: () => {
-        this.cameraRequest++;
-        this.cameraStarting = false;
-        this.#stopCamera();
-      },
-    });
+    let cameraTimedOut = false;
+    let cameraTimeout;
     try {
       const video = { facingMode: this.cameraFacing };
       if (this.cameraOrientation === 'portrait') video.aspectRatio = { ideal: 9 / 16 };
       else if (this.cameraOrientation === 'landscape') video.aspectRatio = { ideal: 16 / 9 };
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const cameraRequest = navigator.mediaDevices.getUserMedia({
         audio: false,
         video,
       });
+      cameraRequest.then(stream => {
+        if (cameraTimedOut || request !== this.cameraRequest || !this.sheet.isOpen) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+      }, () => undefined);
+      const stream = await Promise.race([
+        cameraRequest,
+        new Promise((_, reject) => {
+          cameraTimeout = setTimeout(() => {
+            cameraTimedOut = true;
+            reject(new Error(t('cameraAccessFailed')));
+          }, 15_000);
+        }),
+      ]);
       if (request !== this.cameraRequest || !this.sheet.isOpen) {
         stream.getTracks().forEach(track => track.stop());
         return;
@@ -617,23 +628,20 @@ export class ComposeSheet {
       this.stageMessage.textContent = '';
     } catch (error) {
       if (request === this.cameraRequest) {
-        const message = String(error?.message || t('cameraAccessFailed')).replace(/\b(?:null|undefined)\b/gi, '').trim() || t('cameraAccessFailed');
-        this.#showCameraFallback(message);
-        this.#openPicker(this.mediaInput);
+        console.warn('[compose] camera unavailable; device media remains available', error);
+        this.#stopCamera();
+        this.#showCameraFallback();
       }
     } finally {
+      clearTimeout(cameraTimeout);
       if (request === this.cameraRequest) {
         this.cameraStarting = false;
-        this.wait.stop('camera');
       }
     }
   }
 
-  #showCameraFallback(message) {
-    const chooseMedia = h('button', {
-      class: 'pill-btn hot', type: 'button', onclick: () => this.#openPicker(this.mediaInput),
-    }, t('choosePhotosOrVideo'));
-    this.stageMessage.replaceChildren(document.createTextNode(message), chooseMedia);
+  #showCameraFallback() {
+    this.stageMessage.replaceChildren();
   }
 
   async #setCameraOrientation(orientation) {
@@ -780,6 +788,15 @@ export class ComposeSheet {
     this.cameraStream = null;
     this.cameraVideo.srcObject = null;
     this.shutter?.classList.remove('is-recording');
+  }
+
+  #leaveCameraView() {
+    if (this.captureRecorder && this.captureRecorder.state !== 'inactive') {
+      this.cameraRequest++;
+      this.cameraStarting = false;
+      return;
+    }
+    this.#stopCamera();
   }
 
   #setCaptureMode(mode, selectedButton) {

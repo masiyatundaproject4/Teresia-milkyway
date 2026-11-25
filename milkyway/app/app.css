@@ -2030,9 +2030,12 @@ html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance=
 @keyframes soundWave { to { height: 15px; } }
 .sound-track-icon.is-saved { border-color: rgba(204,174,255,.42); color: #d3b2ff; }
 .sound-track-duration { color: inherit; font-size: inherit; }
-.mw-wait-overlay { position: absolute; z-index: 80; inset: 0; display: grid; align-items: center; justify-items: center; padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom)); background: rgba(5,6,20,.36); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); pointer-events: none; }
+.mw-wait-overlay { position: absolute; z-index: 80; inset: 0; display: grid; align-items: center; justify-items: center; padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom)); background: url("../galaxy-starfield.svg") center / 420px 490px repeat, radial-gradient(75% 55% at 50% 34%, rgba(87,58,158,.38), transparent 76%), radial-gradient(65% 45% at 18% 84%, rgba(44,119,189,.18), transparent 78%), rgba(5,6,20,.94); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); pointer-events: none; }
 .mw-wait-overlay[hidden] { display: none; }
-.mw-wait-card { display: grid; justify-items: center; gap: 10px; width: min(250px, 100%); padding: 21px 20px 17px; border: 1px solid rgba(202,181,255,.26); border-radius: 22px; background: linear-gradient(145deg, rgba(33,28,75,.9), rgba(11,13,39,.94)); box-shadow: 0 16px 48px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.08); color: #f7f3ff; text-align: center; }
+.mw-wait-card { display: grid; justify-items: center; gap: 10px; width: min(270px, 100%); padding: 21px 20px 17px; border: 1px solid rgba(202,181,255,.26); border-radius: 22px; background: linear-gradient(145deg, rgba(33,28,75,.82), rgba(11,13,39,.9)); color: #f7f3ff; text-align: center; }
+.mw-wait-brand { display: grid; justify-items: center; gap: 7px; margin-bottom: 2px; }
+.mw-wait-brand .mw-mark--wait { display: block; width: 76px; height: 76px; object-fit: contain; opacity: .96; filter: drop-shadow(0 0 18px rgba(155,92,255,.42)); }
+.mw-wait-brand strong { color: #f4efff; font: 650 12px/1 Georgia, "Times New Roman", serif; letter-spacing: .3em; padding-left: .3em; text-transform: uppercase; }
 .mw-wait-spinner { width: 34px; height: 34px; border: 3px solid rgba(212,194,255,.22); border-top-color: #d6bcff; border-right-color: #8bc7ff; border-radius: 50%; animation: mw-wait-spin .85s linear infinite; }
 .mw-wait-title { font-size: 15px; font-weight: 800; letter-spacing: .01em; }
 .mw-wait-status { max-width: 100%; margin: 0; color: rgba(239,234,255,.75); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }

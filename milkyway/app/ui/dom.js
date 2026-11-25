@@ -28,6 +28,7 @@ export class WaitIndicator {
     this.cancel = h('button', { class: 'mw-wait-cancel', type: 'button', hidden: true }, t('cancel'));
     this.overlay = h('div', { class: 'mw-wait-overlay', hidden: true },
       h('div', { class: 'mw-wait-card' },
+        h('div', { class: 'mw-wait-brand' }, brandMark('wait'), h('strong', {}, 'MilkyWay')),
         h('span', { class: 'mw-wait-spinner', 'aria-hidden': 'true' }),
         h('strong', { class: 'mw-wait-title' }, t('pleaseWait')),
         this.status,
