@@ -2056,6 +2056,7 @@ html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance=
 .sheet.live-directory-sheet { width: min(460px, 100%); max-height: min(78dvh, 680px); padding: 0 14px calc(14px + env(safe-area-inset-bottom)); border: 1px solid rgba(195,174,255,.18); background: linear-gradient(160deg, rgba(21,19,53,.98), rgba(8,9,27,.99)); box-shadow: none; }
 .live-directory-sheet .sheet-body { display: flex; min-height: 0; gap: 8px; overflow-y: auto; }
 .live-directory-status { flex: none; margin: 0; color: rgba(236,230,255,.65); font-size: 11px; }
+.live-directory-retry { align-self: flex-start; min-height: 30px; padding: 0 11px; border: 1px solid rgba(202,180,255,.2); border-radius: 99px; background: rgba(146,105,219,.14); color: #f0eaff; font-size: 10px; font-weight: 750; box-shadow: none; }
 .live-directory-rows { display: grid; align-content: start; gap: 7px; }
 .live-directory-room { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: 9px; min-width: 0; padding: 8px; border: 1px solid rgba(198,177,255,.14); border-radius: 13px; background: rgba(255,255,255,.035); }
 .live-directory-copy { display: grid; min-width: 0; gap: 2px; }

@@ -591,10 +591,13 @@ export class LiveView {
     this.goPreviewVideo = null;
     this.goPreviewError = null;
     this.goWait = null;
+    this.directoryLoading = false;
+    this.directoryRequest = 0;
     this.directorySheet = new Sheet({ title: t('liveDirectory'), className: 'live-directory-sheet', autoFocus: false });
     this.directoryStatus = h('p', { class: 'live-directory-status', role: 'status', 'aria-live': 'polite' });
     this.directoryRows = h('div', { class: 'live-directory-rows' });
-    this.directorySheet.body.append(this.directoryStatus, this.directoryRows);
+    this.directoryRetry = h('button', { class: 'live-directory-retry', type: 'button', hidden: true, onclick: () => { void this.#refreshDirectory(); } }, t('retry'));
+    this.directorySheet.body.append(this.directoryStatus, this.directoryRows, this.directoryRetry);
     this.surface = h('div', { class: 'live-pager', tabindex: '0', 'aria-label': 'LIVE' });
     this.empty = h('div', { class: 'live-empty', hidden: true },
       h('p', {}, t('noLives')),
@@ -619,30 +622,60 @@ export class LiveView {
   }
 
   openDirectory() {
+    this.directoryLoading = true;
     this.#renderDirectory(lives.value);
     this.directorySheet.open();
     watchLives().catch(error => console.warn('[live] directory realtime unavailable', error));
-    lives.load().catch(error => {
+    void this.#refreshDirectory();
+  }
+
+  async #refreshDirectory() {
+    const request = ++this.directoryRequest;
+    this.directoryLoading = true;
+    this.#renderDirectory(lives.value);
+    try {
+      const list = await lives.refresh();
+      if (request !== this.directoryRequest) return;
+      this.directoryLoading = false;
+      if (!Array.isArray(list)) {
+        this.directoryStatus.textContent = t('liveLoadFailed');
+        this.directoryRows.replaceChildren();
+        this.directoryRetry.hidden = false;
+        return;
+      }
+      this.#renderDirectory(list);
+      if (!list.length && (lives.error || navigator.onLine === false)) this.directoryStatus.textContent = t('liveLoadFailed');
+    } catch (error) {
+      if (request !== this.directoryRequest) return;
       console.warn('[live] directory refresh failed', error);
+      this.directoryLoading = false;
       this.directoryStatus.textContent = t('liveLoadFailed');
-    });
+      this.directoryRows.replaceChildren();
+      this.directoryRetry.hidden = false;
+    }
   }
 
   #renderDirectory(list) {
     if (!Array.isArray(list)) {
-      this.directoryStatus.textContent = t('loading');
+      this.directoryStatus.textContent = this.directoryLoading ? t('loading') : t('liveLoadFailed');
       this.directoryRows.replaceChildren();
+      this.directoryRetry.hidden = this.directoryLoading;
       return;
     }
     if (!list.length) {
-      this.directoryStatus.textContent = t('noLives');
+      this.directoryStatus.textContent = this.directoryLoading
+        ? t('loading')
+        : lives.error || navigator.onLine === false ? t('liveLoadFailed') : t('noLives');
       this.directoryRows.replaceChildren();
+      this.directoryRetry.hidden = this.directoryLoading;
       return;
     }
     this.directoryStatus.textContent = `${list.length} ${t('liveRoomsNow')}`;
+    this.directoryRetry.hidden = true;
     this.directoryRows.replaceChildren(...list.map(live => {
       const face = h('span', { class: 'avatar', style: '--s:38px' });
       paintAvatar(face, live.host, 38);
+      const viewers = live.viewerCount == null ? '–' : count(live.viewerCount);
       const watch = h('button', { class: 'live-directory-watch', type: 'button', onclick: () => {
         this.directorySheet.close();
         this.hooks.openRoom?.(live.room);
@@ -663,7 +696,7 @@ export class LiveView {
         h('div', { class: 'live-directory-copy' },
           h('strong', {}, displayName(live.host?.name)),
           h('small', {}, live.title || t('live')),
-          h('span', { class: 'live-directory-status-tag' }, t('liveNow'))),
+          h('span', { class: 'live-directory-status-tag' }, `${t('liveNow')} · ${viewers} ${t('viewers')}`)),
         h('div', { class: 'live-directory-actions' }, watch, listen));
     }));
   }
