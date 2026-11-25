@@ -9,6 +9,7 @@ const memory = new Map();
 const following = new Set();
 const requested = new Set();
 let followLoaded = false;
+let followingRefresh = null;
 
 const normalize = row => row && ({
   id: String(row.id), name: row.name || row.display_name || 'MilkyWay',
@@ -71,13 +72,28 @@ export const profiles = {
       followLoaded = true;
       (await store.get(scoped('following')) || []).forEach(id => following.add(id));
     }
-    rest(`mw_follows?follower_id=eq.${auth.userId}&select=following_id&limit=2000`).then(rows => {
-      following.clear();
-      (rows || []).forEach(row => following.add(String(row.following_id)));
-      store.set(scoped('following'), [...following]);
-      bus.emit('follow', null);
-    }).catch(() => {});
+    void profiles.refreshFollowing();
     return following;
   },
+  async refreshFollowing() {
+    if (!auth.signedIn()) { following.clear(); return false; }
+    if (followingRefresh) return followingRefresh;
+    const userId = auth.userId;
+    followingRefresh = rest(`mw_follows?follower_id=eq.${userId}&select=following_id&limit=2000`)
+      .then(rows => {
+        if (auth.userId !== userId) return false;
+        following.clear();
+        (rows || []).forEach(row => following.add(String(row.following_id)));
+        store.set(scoped('following'), [...following]);
+        bus.emit('follow', null);
+        return true;
+      })
+      .catch(error => {
+        if (navigator.onLine !== false) console.warn('[profiles] following list refresh failed', error);
+        return false;
+      })
+      .finally(() => { followingRefresh = null; });
+    return followingRefresh;
+  },
 };
-bus.on('auth', () => { following.clear(); requested.clear(); followLoaded = false; profiles.loadFollowing(); });
+bus.on('auth', () => { following.clear(); requested.clear(); followLoaded = false; followingRefresh = null; profiles.loadFollowing(); });

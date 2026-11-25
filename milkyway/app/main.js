@@ -308,9 +308,75 @@ document.addEventListener('click', event => {
 });
 
 // ---- Connectivity + account changes ----------------------------------------------------------------------
-bus.on('offline', () => { $('netBanner').hidden = false; $('netBanner').textContent = t('offline'); });
-bus.on('online', () => { if (!$('netBanner').hidden) { $('netBanner').hidden = true; toast(t('backOnline')); } });
+let reconnectTimer = 0;
+let reconnectAttempt = 0;
+let reconnectInFlight = null;
+const reconnectDelays = [0, 1500, 4000, 10_000, 30_000];
+bus.on('offline', () => {
+  $('netBanner').hidden = false;
+  $('netBanner').textContent = t('offline');
+  clearTimeout(reconnectTimer);
+  reconnectTimer = 0;
+  reconnectAttempt = 0;
+});
+function scheduleConnectivityRefresh() {
+  if (navigator.onLine === false || document.visibilityState !== 'visible' || reconnectTimer || reconnectInFlight) return;
+  const delay = reconnectDelays[Math.min(reconnectAttempt, reconnectDelays.length - 1)];
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = 0;
+    if (navigator.onLine === false || document.visibilityState !== 'visible') return;
+    let retryReconnect = false;
+    reconnectInFlight = (async () => {
+      try {
+        const [liveData, feedData, presenceData] = await Promise.all([
+          import('./data/live.js'),
+          import('./data/feed.js'),
+          import('./data/presence.js'),
+        ]);
+        const activeFeed = feedView.source;
+        const tasks = [
+          activeFeed?.refresh(),
+          auth.signedIn() ? profiles.refreshFollowing() : Promise.resolve(true),
+          liveData.lives.refresh(),
+          liveData.watchLives(),
+          feedData.watchPosts(() => scope),
+          auth.signedIn() ? presenceData.presence.start() : Promise.resolve(),
+          followersView.loaded() ? followersView().then(view => view.refresh()) : Promise.resolve(),
+        ].filter(Boolean);
+        const results = await Promise.allSettled(tasks);
+        const failed = results.some(result => result.status === 'rejected'
+          || (result.status === 'fulfilled' && result.value === false))
+          || activeFeed?.source.error || liveData.lives.error;
+        if (failed) {
+          reconnectAttempt++;
+          retryReconnect = true;
+        } else reconnectAttempt = 0;
+      } catch (error) {
+        console.warn('[sync] reconnect refresh could not start', error);
+        reconnectAttempt++;
+        retryReconnect = true;
+      }
+    })().finally(() => {
+      reconnectInFlight = null;
+      if (retryReconnect) scheduleConnectivityRefresh();
+    });
+  }, delay);
+}
+bus.on('online', () => {
+  if (!$('netBanner').hidden) { $('netBanner').hidden = true; toast(t('backOnline')); }
+  scheduleConnectivityRefresh();
+});
 if (navigator.onLine === false) { $('netBanner').hidden = false; $('netBanner').textContent = t('offline'); }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (navigator.onLine === false) {
+    $('netBanner').hidden = false;
+    $('netBanner').textContent = t('offline');
+    return;
+  }
+  $('netBanner').hidden = true;
+  scheduleConnectivityRefresh();
+});
 let syncingOAuthUsername = false;
 async function syncPendingOAuthUsername() {
   const key = 'mw_pending_oauth_username';

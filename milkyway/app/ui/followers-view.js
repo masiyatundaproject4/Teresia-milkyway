@@ -1,4 +1,5 @@
 import { auth, supabase } from '../core/net.js';
+import { store } from '../core/store.js';
 import { bus } from '../core/events.js';
 import { t } from '../core/i18n.js';
 import { profiles } from '../data/profiles.js';
@@ -155,6 +156,23 @@ export class FollowersView {
   }
 
   async #load(token) {
+    let cached = false;
+    const cacheKey = `connections:${auth.userId || 'guest'}:${this.person?.id || ''}`;
+    const saved = await store.get(cacheKey);
+    if (token !== this.token) return;
+    if (saved && Array.isArray(saved.people)) {
+      this.followingIds = saved.followingIds || [];
+      this.followerIds = saved.followerIds || [];
+      this.followDates = new Map(saved.followDates || []);
+      this.people = saved.people;
+      this.peopleById = new Map(saved.people.map(person => [String(person.id), person]));
+      this.liveRooms = new Map(saved.liveRooms || []);
+      this.newPosts = new Map(saved.newPosts || []);
+      this.requests = saved.requests || [];
+      profiles.prime(saved.people);
+      this.#render();
+      cached = true;
+    }
     try {
       const sb = await supabase();
       if (auth.signedIn()) {
@@ -232,12 +250,28 @@ export class FollowersView {
       if (token !== this.token) return;
       this.people = people;
       this.#render();
+      store.set(cacheKey, {
+        followingIds: this.followingIds,
+        followerIds: this.followerIds,
+        followDates: [...this.followDates],
+        people: [...peopleById.values()],
+        liveRooms: [...this.liveRooms],
+        newPosts: [...this.newPosts],
+        requests: this.requests,
+      });
     } catch (error) {
       if (token !== this.token) return;
       console.error('[connections] Could not load connections.', error);
-      this.content.replaceChildren(h('div', { class: 'connections-error', role: 'status' },
-        h('b', {}, t('connectionLost')), h('span', {}, t('retry'))));
+      if (!cached) {
+        this.content.replaceChildren(h('div', { class: 'connections-error', role: 'status' },
+          h('b', {}, t('connectionLost')), h('span', {}, t('retry'))));
+      }
     }
+  }
+
+  refresh() {
+    if (!this.sheet.isOpen || !this.person) return Promise.resolve();
+    return this.#load(this.token);
   }
 
   async #loadSuggested(token) {
