@@ -447,19 +447,26 @@ const STARTING_MS = 90_000;
 async function lives({ ctx }) {
   const rows = (await ctx.rest(`mw_video_live_sessions?is_live=eq.true&select=${LIVE_SELECT}&order=started_at.desc&limit=60`)) || [];
   const named = rows.filter(row => ROOM.test(row.room_name || ''));
-  if (!named.length || !livekitConfigured(ctx.env)) return { sessions: named, verified: false };
+  if (!named.length || !livekitConfigured(ctx.env)) return { sessions: named.map(row => ({ ...row, viewer_count: null })), verified: false };
   let rooms;
   try {
     const data = await livekit('ListRooms', null, { names: named.map(row => row.room_name) }, { roomList: true }, ctx.env);
     rooms = new Map((data?.rooms || []).map(room => [room.name, room]));
-  } catch { return { sessions: named, verified: false }; }
+  } catch { return { sessions: named.map(row => ({ ...row, viewer_count: null })), verified: false }; }
   const running = named.filter(row => {
     const room = rooms.get(row.room_name);
     if (room && Number(room.num_publishers ?? room.numPublishers ?? 0) > 0) return true;
     // Just started: the host may still be connecting their camera.
     return Date.now() - Date.parse(row.started_at || 0) < STARTING_MS;
   });
-  return { sessions: running, verified: true };
+  return {
+    sessions: running.map(row => {
+      const room = rooms.get(row.room_name);
+      const participants = Number(room?.num_participants ?? room?.numParticipants);
+      return { ...row, viewer_count: Number.isFinite(participants) ? Math.max(0, participants - 1) : null };
+    }),
+    verified: true,
+  };
 }
 
 export default route({ '': handle, lives: { auth: false, run: lives } });

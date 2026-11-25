@@ -31,6 +31,7 @@ async function fetchLives() {
     const profile = hosts.get(String(row.host_id));
     return {
       id: row.id, room: row.room_name, title: row.title || '', startedAt: row.started_at,
+      viewerCount: row.viewer_count == null || !Number.isFinite(Number(row.viewer_count)) ? null : Number(row.viewer_count),
       mode: /audio/.test(row.room_name) ? 'audio' : 'video',
       host: { id: String(row.host_id), name: profile?.name || row.host_name || 'MilkyWay', avatar: profile?.avatar || '' },
     };

@@ -47,6 +47,7 @@ function openCommunity() {
 }
 const callView = lazy(() => import('./ui/call-view.js').then(m => m.calls));
 const novaMenu = lazy(() => import('./ui/settings-view.js').then(m => new m.NovaMenu({
+  openGoLive,
   openProfilePhoto: file => {
     if (!requireLogin()) return;
     profileView().then(view => view.openForPhoto(file)).catch(error => toast(error?.message || t('photoUploadFailed')));
@@ -64,7 +65,7 @@ const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.Pr
   openActivity: person => followersView().then(view => view.open(person, { mode: 'activity' })),
 })));
 const profileSearch = lazy(() => import('./ui/profile-search.js').then(m => new m.ProfileSearch({ openProfile })));
-const composeSheet = lazy(() => import('./ui/compose-sheet.js').then(m => new m.ComposeSheet()));
+const composeSheet = lazy(() => import('./ui/compose-sheet.js').then(m => new m.ComposeSheet({ onGoLive: openGoLive })));
 // Full-size post popup for photos tapped in the Orbit feed (the same viewer the Nova grid uses).
 const postViewer = lazy(() => import('./ui/post-viewer.js').then(m => new m.PostViewer({
   requireLogin,
@@ -115,7 +116,7 @@ async function listenLive(live) {
   if (request !== ambientLiveRequest || shell.dataset.view !== 'home') return;
   const session = new LiveSession(live, { audioOnly: true });
   ambientLiveSession = session;
-  ambientLiveMuted = playback.muted;
+  ambientLiveMuted = false;
   session.setAudioMuted(ambientLiveMuted);
   paintAmbientControls();
   try {

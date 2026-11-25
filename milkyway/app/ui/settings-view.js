@@ -170,8 +170,8 @@ async function renderPlayCoinPackages(container, balance, note) {
 }
 
 export class NovaMenu {
-  constructor({ onSignedOut, openStudioPost, openProfilePhoto } = {}) {
-    this.hooks = { onSignedOut, openStudioPost, openProfilePhoto };
+  constructor({ onSignedOut, openStudioPost, openProfilePhoto, openGoLive } = {}) {
+    this.hooks = { onSignedOut, openStudioPost, openProfilePhoto, openGoLive };
     this.sheet = new Sheet({ title: t('menu'), className: 'nova-sheet', onClose: () => this.studioView?.stop() });
     this.content = h('div', { class: 'nova-menu' });
     this.sheet.body.append(this.content);
@@ -415,7 +415,7 @@ export class NovaMenu {
       setTitle: title => { this.sheet.title = title; },
       onBack: () => this.#home(),
       onWallet: () => this.#wallet(),
-      onGoLive: () => { this.sheet.close(); document.querySelector('#liveEntry')?.click(); },
+      onGoLive: () => { this.sheet.close(); this.hooks.openGoLive?.(); },
       onCreatePost: () => { this.sheet.close(); this.hooks.openStudioPost?.(); },
       onOpenPost: post => { this.sheet.close(); this.hooks.openStudioPost?.(post); },
     });

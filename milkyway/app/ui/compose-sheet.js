@@ -136,8 +136,9 @@ function publishError(error, phase) {
 }
 
 export class ComposeSheet {
-  constructor({ onPublished } = {}) {
+  constructor({ onPublished, onGoLive } = {}) {
     this.onPublished = onPublished;
+    this.onGoLive = onGoLive;
     this.sheet = new Sheet({ title: t('newPost'), className: 'compose-sheet creator-studio-sheet', dismissible: false, onClose: () => {
       this.wait?.stop('camera');
       this.wait?.stop('media');
@@ -411,7 +412,7 @@ export class ComposeSheet {
     const liveShortcut = h('button', {
       class: 'creator-live-shortcut', type: 'button', onclick: () => {
         this.sheet.close();
-        document.querySelector('#liveEntry')?.click();
+        this.onGoLive?.();
       },
     }, h('span', { 'aria-hidden': 'true' }, '●'), t('studioLiveShortcut'));
     this.createHub.append(
