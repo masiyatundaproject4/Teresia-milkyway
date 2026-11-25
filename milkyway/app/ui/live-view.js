@@ -612,7 +612,13 @@ export class LiveView {
     this.directoryStatus = h('p', { class: 'live-directory-status', role: 'status', 'aria-live': 'polite' });
     this.directoryRows = h('div', { class: 'live-directory-rows' });
     this.directoryRetry = h('button', { class: 'live-directory-retry', type: 'button', hidden: true, onclick: () => { void this.#refreshDirectory(); } }, t('retry'));
-    this.directorySheet.body.append(this.directoryStatus, this.directoryRows, this.directoryRetry);
+    this.directoryEmptyMessage = h('h1', { class: 'live-directory-empty-message' }, t('loading'));
+    this.directoryEmptyRetry = h('button', { class: 'live-directory-empty-retry', type: 'button', hidden: true, onclick: () => { void this.#refreshDirectory(); } }, t('retry'));
+    this.directoryEmpty = h('section', { class: 'live-directory-empty', hidden: true },
+      h('button', { class: 'live-directory-close', type: 'button', 'aria-label': t('close'), onclick: () => this.directorySheet.close() }, '×'),
+      h('div', { class: 'live-directory-brand' }, brandMark('directory'), h('strong', {}, 'MilkyWay')),
+      this.directoryEmptyMessage, this.directoryEmptyRetry);
+    this.directorySheet.body.append(this.directoryStatus, this.directoryRows, this.directoryRetry, this.directoryEmpty);
     this.surface = h('div', { class: 'live-pager', tabindex: '0', 'aria-label': 'LIVE' });
     this.empty = h('div', { class: 'live-empty', hidden: true },
       h('p', {}, t('noLives')),
@@ -652,21 +658,12 @@ export class LiveView {
       const list = await lives.refresh();
       if (request !== this.directoryRequest) return;
       this.directoryLoading = false;
-      if (!Array.isArray(list)) {
-        this.directoryStatus.textContent = t('liveLoadFailed');
-        this.directoryRows.replaceChildren();
-        this.directoryRetry.hidden = false;
-        return;
-      }
       this.#renderDirectory(list);
-      if (!list.length && (lives.error || navigator.onLine === false)) this.directoryStatus.textContent = t('liveLoadFailed');
     } catch (error) {
       if (request !== this.directoryRequest) return;
       console.warn('[live] directory refresh failed', error);
       this.directoryLoading = false;
-      this.directoryStatus.textContent = t('liveLoadFailed');
-      this.directoryRows.replaceChildren();
-      this.directoryRetry.hidden = false;
+      this.#renderDirectory(null);
     }
   }
 
@@ -674,19 +671,35 @@ export class LiveView {
     if (!Array.isArray(list)) {
       this.directoryStatus.textContent = this.directoryLoading ? t('loading') : t('liveLoadFailed');
       this.directoryRows.replaceChildren();
-      this.directoryRetry.hidden = this.directoryLoading;
+      this.directoryRetry.hidden = true;
+      this.directoryEmptyMessage.textContent = this.directoryLoading ? t('loading') : t('liveLoadFailed');
+      this.directoryEmptyRetry.hidden = this.directoryLoading;
+      this.directoryEmpty.hidden = false;
+      this.directoryStatus.hidden = true;
+      this.directoryRows.hidden = true;
+      this.directorySheet.panel.classList.add('is-empty');
       return;
     }
     if (!list.length) {
-      this.directoryStatus.textContent = this.directoryLoading
-        ? t('loading')
-        : lives.error || navigator.onLine === false ? t('liveLoadFailed') : t('noLives');
+      const empty = !this.directoryLoading && !lives.error && navigator.onLine !== false;
+      this.directoryStatus.textContent = this.directoryLoading ? t('loading') : t('liveLoadFailed');
       this.directoryRows.replaceChildren();
-      this.directoryRetry.hidden = this.directoryLoading;
+      this.directoryRetry.hidden = true;
+      this.directoryEmptyMessage.textContent = this.directoryLoading ? t('loading') : empty ? t('noLives') : t('liveLoadFailed');
+      this.directoryEmptyRetry.hidden = this.directoryLoading;
+      this.directoryStatus.hidden = true;
+      this.directoryRows.hidden = true;
+      this.directoryEmpty.hidden = false;
+      this.directorySheet.panel.classList.add('is-empty');
       return;
     }
     this.directoryStatus.textContent = `${list.length} ${t('liveRoomsNow')}`;
+    this.directoryStatus.hidden = false;
+    this.directoryRows.hidden = false;
     this.directoryRetry.hidden = true;
+    this.directoryEmptyRetry.hidden = true;
+    this.directoryEmpty.hidden = true;
+    this.directorySheet.panel.classList.remove('is-empty');
     this.directoryRows.replaceChildren(...list.map(live => {
       const face = h('span', { class: 'avatar', style: '--s:38px' });
       paintAvatar(face, live.host, 38);

@@ -2057,6 +2057,18 @@ html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance=
 .live-directory-sheet .sheet-body { display: flex; min-height: 0; gap: 8px; overflow-y: auto; }
 .live-directory-status { flex: none; margin: 0; color: rgba(236,230,255,.65); font-size: 11px; }
 .live-directory-retry { align-self: flex-start; min-height: 30px; padding: 0 11px; border: 1px solid rgba(202,180,255,.2); border-radius: 99px; background: rgba(146,105,219,.14); color: #f0eaff; font-size: 10px; font-weight: 750; box-shadow: none; }
+.sheet.live-directory-sheet.is-empty { inset: 0; width: 100%; height: 100vh; height: 100dvh; max-height: 100dvh; margin: 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); overflow: hidden; border: 0; border-radius: 0; background: url("../galaxy-starfield.svg") 0 0 / 480px 560px repeat, radial-gradient(75% 55% at 50% 34%, rgba(87,58,158,.42), transparent 76%), linear-gradient(160deg, #090a20, #050615 72%); }
+.live-directory-sheet.is-empty .sheet-grip,
+.live-directory-sheet.is-empty .sheet-title { display: none; }
+.live-directory-sheet.is-empty .sheet-body { position: relative; display: grid; width: 100%; height: 100%; padding: 0; overflow: hidden; }
+.live-directory-empty { position: relative; display: grid; align-content: center; justify-items: center; gap: 18px; width: 100%; height: 100%; padding: 28px 24px calc(28px + env(safe-area-inset-bottom)); text-align: center; }
+.live-directory-empty[hidden] { display: none; }
+.live-directory-close { position: absolute; top: 10px; left: 16px; display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid rgba(218,201,255,.2); border-radius: 50%; background: rgba(13,14,40,.64); color: #fff; font-size: 24px; box-shadow: none; }
+.live-directory-brand { display: grid; justify-items: center; gap: 12px; color: #f7f2ff; }
+.live-directory-brand strong { font: 600 clamp(17px, 5vw, 22px)/1 Georgia, "Times New Roman", serif; letter-spacing: .36em; text-transform: uppercase; padding-left: .36em; background: linear-gradient(90deg, #b9d8ff, var(--starlight) 50%, #d7b8ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.live-directory-brand .mw-mark--directory { position: static; width: clamp(94px, 25vw, 132px); height: auto; opacity: .94; filter: drop-shadow(0 0 22px rgba(155,92,255,.48)); transform: none; }
+.live-directory-empty h1 { max-width: 18ch; margin: 0; color: #f4f1ff; font-size: clamp(19px, 5.2vw, 26px); font-weight: 700; line-height: 1.25; text-wrap: balance; }
+.live-directory-empty-retry { min-height: 42px; padding: 0 24px; border: 1px solid rgba(205,187,255,.24); border-radius: 99px; background: linear-gradient(120deg, rgba(122,76,197,.64), rgba(47,105,182,.52)); color: #fff; font-size: 12px; font-weight: 800; box-shadow: none; }
 .live-directory-rows { display: grid; align-content: start; gap: 7px; }
 .live-directory-room { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: 9px; min-width: 0; padding: 8px; border: 1px solid rgba(198,177,255,.14); border-radius: 13px; background: rgba(255,255,255,.035); }
 .live-directory-copy { display: grid; min-width: 0; gap: 2px; }

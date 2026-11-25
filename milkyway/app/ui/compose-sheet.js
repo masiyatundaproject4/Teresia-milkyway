@@ -199,7 +199,7 @@ export class ComposeSheet {
     this.recordingStarting = false;
     this.cameraVideo = h('video', { class: 'creator-camera-video', autoplay: true, muted: true, playsinline: true, 'aria-label': t('camera') });
     this.stage = h('div', { class: 'creator-stage', 'data-mode': 'photo' }, this.cameraVideo, this.preview);
-    this.stageMessage = h('span', { class: 'creator-stage-message', role: 'status', 'aria-live': 'polite' });
+    this.stageMessage = h('div', { class: 'creator-stage-message', role: 'status', 'aria-live': 'polite' });
     this.textStage = h('div', { class: 'creator-text-stage', hidden: true });
     this.captionWrap = h('label', { class: 'creator-caption-wrap' },
       h('span', { class: 'creator-caption-label' }, t('captionLabel')),
@@ -584,7 +584,8 @@ export class ComposeSheet {
   async #startCamera() {
     if (this.cameraStream || this.cameraStarting || !this.sheet.isOpen) return;
     if (!navigator.mediaDevices?.getUserMedia) {
-      this.stageMessage.textContent = t('cameraAccessFailed');
+      this.#showCameraFallback(t('cameraAccessFailed'));
+      this.#openPicker(this.mediaInput);
       return;
     }
     this.cameraStarting = true;
@@ -616,7 +617,9 @@ export class ComposeSheet {
       this.stageMessage.textContent = '';
     } catch (error) {
       if (request === this.cameraRequest) {
-        this.stageMessage.textContent = String(error?.message || t('cameraAccessFailed')).replace(/\b(?:null|undefined)\b/gi, '').trim() || t('cameraAccessFailed');
+        const message = String(error?.message || t('cameraAccessFailed')).replace(/\b(?:null|undefined)\b/gi, '').trim() || t('cameraAccessFailed');
+        this.#showCameraFallback(message);
+        this.#openPicker(this.mediaInput);
       }
     } finally {
       if (request === this.cameraRequest) {
@@ -624,6 +627,13 @@ export class ComposeSheet {
         this.wait.stop('camera');
       }
     }
+  }
+
+  #showCameraFallback(message) {
+    const chooseMedia = h('button', {
+      class: 'pill-btn hot', type: 'button', onclick: () => this.#openPicker(this.mediaInput),
+    }, t('choosePhotosOrVideo'));
+    this.stageMessage.replaceChildren(document.createTextNode(message), chooseMedia);
   }
 
   async #setCameraOrientation(orientation) {
