@@ -1,0 +1,2 @@
+-- Deprecated. The original implementation embedded a webhook placeholder that had to be replaced manually.
+-- Push delivery is installed securely by 20261127_milkyway_push_delivery.sql using Supabase Vault.
