@@ -51,6 +51,8 @@ export function setImage(img, url, width = 720, { quality = 72, onFail } = {}) {
   img.src = sized;
 }
 
+export const TRANSPARENT_VIDEO_POSTER = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
 /** Poster for an uploaded video (the composer saves "<video>.poster.jpg" next to Supabase uploads). */
 export function poster(videoUrl, width) {
   if (!videoUrl || !videoUrl.includes('/storage/v1/object/public/')) return '';

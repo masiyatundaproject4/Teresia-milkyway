@@ -7,7 +7,7 @@ import { config } from '../config.js';
 import { auth, supabase } from '../core/net.js';
 import { bus, idle } from '../core/events.js';
 import { device } from '../core/device.js';
-import { setImage, poster, mediaKind } from '../core/media.js';
+import { setImage, poster, mediaKind, TRANSPARENT_VIDEO_POSTER } from '../core/media.js';
 import { t } from '../core/i18n.js';
 import { feed, actions, deletedPosts, watchPosts } from '../data/feed.js';
 import { profiles } from '../data/profiles.js';
@@ -152,7 +152,7 @@ export class FeedView {
 
   // ---- Slides ----------------------------------------------------------------------------------------------
   #createSlide() {
-    const video = h('video', { playsinline: true, 'webkit-playsinline': true, loop: true, muted: true, preload: 'none', disablepictureinpicture: true, disableremoteplayback: true });
+    const video = h('video', { poster: TRANSPARENT_VIDEO_POSTER, playsinline: true, 'webkit-playsinline': true, loop: true, muted: true, preload: 'none', disablepictureinpicture: true, disableremoteplayback: true });
     const img = h('img', { alt: '', decoding: 'async', draggable: 'false' });
     const slideshowBadge = h('span', { class: 'slideshow-badge', hidden: true, 'aria-hidden': 'true' }, '▧');
     const text = h('div', { class: 'text-card' });
@@ -354,8 +354,8 @@ export class FeedView {
     delete slide.dataset.fit;
     if (type === 'video') {
       const still = poster(post.media.url, device.mediaWidth);
-      still ? (r.video.poster = still) : r.video.removeAttribute('poster');
-    } else r.video.removeAttribute('poster');
+      r.video.poster = still || TRANSPARENT_VIDEO_POSTER;
+    } else r.video.poster = TRANSPARENT_VIDEO_POSTER;
     if (type === 'image') {
       r.img.hidden = false;
       r.img.alt = displayText(post.caption);

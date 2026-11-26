@@ -24,6 +24,14 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+video::-webkit-media-controls,
+video::-webkit-media-controls-overlay-play-button,
+video::-webkit-media-controls-start-playback-button,
+video::-webkit-media-controls-enclosure {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; overscroll-behavior: none; }
 html { background: radial-gradient(140% 90% at 50% 0%, var(--midnight) 0%, var(--bg) 55%, var(--void) 100%) fixed var(--bg); }
 body { background: transparent; }
@@ -290,8 +298,12 @@ html[data-view="explore"] .topbar { display: none; }
 .live-host-background { position: absolute; z-index: 0; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 0%, #2d1a78, var(--midnight)); }
 .live-host-background img, .live-host-background video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .live-stage { position: absolute; inset: 0; }
+.live-stage-backdrop { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center;
+  background: url("../galaxy-starfield.svg") center / 480px 560px repeat, radial-gradient(90% 65% at 50% 35%, rgba(97,75,151,.56), transparent 70%), linear-gradient(160deg, #090a20, #050615 72%); }
+.live-stage-backdrop[hidden] { display: none !important; }
+.live-stage-backdrop .mw-mark--stage { position: static; width: min(42vw, 160px); height: auto; opacity: .9; filter: none; transform: none; }
 .live-host-cell > .live-cover, .live-host-cell > .live-stage { z-index: 1; }
-.live-stage .live-track { width: 100%; height: 100%; object-fit: cover; }
+.live-stage .live-track { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .live-track.mirror { transform: scaleX(-1); }
 .live-guests { position: absolute; right: 10px; top: calc(80px + env(safe-area-inset-top)); display: grid; gap: 8px; z-index: 2; }
 .live-guests .live-track { width: 96px; height: 128px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
@@ -912,7 +924,11 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .creator-sound-button > span { color: #c9aaff; font-size: 16px; }
 .creator-stage-wrap { position: relative; flex: 1 1 auto; min-height: 150px; overflow: hidden; border: 1px solid rgba(197,181,255,.14); border-radius: 24px; background: radial-gradient(70% 55% at 50% 30%, rgba(76,67,140,.22), transparent 75%), #090a1a; box-shadow: inset 0 0 50px rgba(62,50,128,.12), 0 12px 34px rgba(0,0,0,.24); }
 .creator-stage { position: absolute; inset: 0; overflow: hidden; background: #080916; }
-.creator-camera-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #080916; filter: none; transform: scale(var(--creator-camera-zoom, 1)); transform-origin: center; transition: transform .12s ease-out; }
+.creator-stage-backdrop { position: absolute; z-index: 0; inset: 0; display: grid; place-items: center;
+  background: url("../galaxy-starfield.svg") center / 480px 560px repeat, radial-gradient(90% 65% at 50% 35%, rgba(97,75,151,.56), transparent 70%), linear-gradient(160deg, #090a20, #050615 72%); }
+.creator-stage-backdrop[hidden] { display: none !important; }
+.creator-stage-backdrop .mw-mark--creator-stage { position: static; width: min(42vw, 160px); height: auto; opacity: .9; filter: none; transform: none; }
+.creator-camera-video { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; object-fit: cover; background: transparent; filter: none; transform: scale(var(--creator-camera-zoom, 1)); transform-origin: center; transition: transform .12s ease-out; }
 .creator-camera-video.is-selfie { transform: scaleX(-1) scale(var(--creator-camera-zoom, 1)); }
 .creator-stage[data-orientation="portrait"] { inset: 50% auto auto 50%; width: auto; height: 100%; max-width: 100%; aspect-ratio: 9 / 16; transform: translate(-50%, -50%); }
 .creator-stage[data-orientation="landscape"] { inset: 50% auto auto 50%; width: 100%; height: auto; max-height: 100%; aspect-ratio: 16 / 9; transform: translate(-50%, -50%); }
@@ -1720,8 +1736,11 @@ html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance=
 .sheet.go-live-sheet { inset: 0; width: 100%; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); overflow: hidden; border: 0; border-radius: 0; background: #080916; box-shadow: none; }
 .go-live-sheet .sheet-grip, .go-live-sheet .sheet-title { display: none; }
 .go-live-sheet .sheet-body { position: relative; display: block; flex: 1; min-height: 0; height: 100%; padding: 0; overflow: hidden; }
-.go-live-sheet .gl-preview { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(80% 65% at 50% 35%, rgba(97,75,151,.56), transparent 70%), #090a1b; }
-.gl-preview-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: transparent; }
+.go-live-sheet .gl-preview { position: absolute; inset: 0; overflow: hidden; background: url("../galaxy-starfield.svg") center / 480px 560px repeat, radial-gradient(80% 65% at 50% 35%, rgba(97,75,151,.56), transparent 70%), linear-gradient(160deg, #090a20, #050615 72%); }
+.gl-preview-backdrop { position: absolute; z-index: 0; inset: 0; display: grid; place-items: center; }
+.gl-preview-backdrop[hidden] { display: none !important; }
+.gl-preview-backdrop .mw-mark--preview { position: static; width: min(42vw, 160px); height: auto; opacity: .9; filter: none; transform: none; }
+.gl-preview-video { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; object-fit: cover; background: transparent; }
 .gl-preview-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(4,5,20,.48), transparent 26%, transparent 57%, rgba(4,5,18,.62)); pointer-events: none; }
 .gl-topbar { position: absolute; z-index: 3; inset: 8px 14px auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .gl-close { display: grid; flex: none; width: 40px; height: 40px; place-items: center; border: 1px solid rgba(255,255,255,.2); border-radius: 50%; background: rgba(8,9,28,.58); color: #fff; font-size: 26px; line-height: 1; backdrop-filter: blur(12px); touch-action: manipulation; }

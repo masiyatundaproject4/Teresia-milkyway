@@ -17,6 +17,7 @@ import { Sheet } from './sheet.js';
 import { openShare } from './share-sheet.js';
 import { h, icon, count, toast, paintAvatar, brandMark, avatar, WaitIndicator } from './dom.js';
 import { VOICE_PRESETS } from './voice-effects.js';
+import { TRANSPARENT_VIDEO_POSTER } from '../core/media.js';
 
 const JOIN_DELAY = 200;
 const MAX_COMMENTS = 40;
@@ -51,7 +52,8 @@ function liveChrome({ host = false } = {}) {
   const background = h('div', { class: 'live-host-background', hidden: true, 'aria-hidden': 'true' },
     h('img', { class: 'live-host-background-image', alt: '', hidden: true }),
     h('video', { class: 'live-host-background-video', muted: true, loop: true, playsinline: true, preload: 'metadata', hidden: true }));
-  const stage = h('div', { class: 'live-stage' });
+  const stageBackdrop = h('div', { class: 'live-stage-backdrop', 'aria-hidden': 'true' }, brandMark('stage'));
+  const stage = h('div', { class: 'live-stage' }, stageBackdrop);
   const guests = h('div', { class: 'live-guests' });
   // Host cell + allocated guest seats share one grid, including seats that have not been filled yet.
   const hostLabel = h('span', { class: 'live-cell-name' });
@@ -118,7 +120,7 @@ function liveChrome({ host = false } = {}) {
     h('div', { class: 'live-host', 'data-act': 'profile' }, avatarNode, h('div', {}, name, h('small', { class: 'live-tag' }, t('live'))), host ? null : follow),
     viewers, close);
   const node = h('section', { class: 'slide live-slide' }, grid, brandMark('live'), h('div', { class: 'shade' }), resting, top, host ? null : tools, entryChoice, pinned, comments, hearts, banner, state, host ? requests : null, hostNotices, hostActions, bar);
-  node._refs = { avatarNode, name, follow, viewers: viewers.querySelector('b'), viewersWrap: viewers, cover, background, stage, guests, grid, hostLabel, requests, pinned, comments, hearts, banner, state, resting, input, form, tools, micBtn, voiceBtn, camBtn, stageBtn, stageLabel, entryChoice, choiceCount: entryChoice?.querySelector('.live-entry-choice-count'), giftBtn, likeBtn, guestsBadge, seatCount };
+  node._refs = { avatarNode, name, follow, viewers: viewers.querySelector('b'), viewersWrap: viewers, cover, background, stage, stageBackdrop, guests, grid, hostLabel, requests, pinned, comments, hearts, banner, state, resting, input, form, tools, micBtn, voiceBtn, camBtn, stageBtn, stageLabel, entryChoice, choiceCount: entryChoice?.querySelector('.live-entry-choice-count'), giftBtn, likeBtn, guestsBadge, seatCount };
   // Re-arrange the grid whenever a guest tile appears or leaves (tiles come from both room status and video tracks).
   new MutationObserver(() => layoutGrid(node)).observe(guests, { childList: true });
   return node;
@@ -152,7 +154,8 @@ function paintLive(slide, live) {
 
 function resetStage(slide) {
   const r = slide._refs;
-  r.stage.replaceChildren(); r.guests.replaceChildren(); r.comments.replaceChildren(); r.hearts.replaceChildren(); r.banner.replaceChildren();
+  r.stage.replaceChildren(r.stageBackdrop); r.guests.replaceChildren(); r.comments.replaceChildren(); r.hearts.replaceChildren(); r.banner.replaceChildren();
+  r.stageBackdrop.hidden = false;
   r.background.querySelector('img').removeAttribute('src');
   r.background.querySelector('video').pause();
   r.background.querySelector('video').removeAttribute('src');
@@ -449,7 +452,16 @@ function connectUi(slide, session) {
     }),
     session.on('video', ({ element, isHost, participant, name }) => {
       if (isHost) {
-        r.stage.replaceChildren(element);
+        element.poster = TRANSPARENT_VIDEO_POSTER;
+        element.controls = false;
+        const syncStageVideo = () => {
+          r.stageBackdrop.hidden = !element.paused && element.readyState >= 2 && element.videoWidth > 0;
+        };
+        for (const type of ['playing', 'loadeddata', 'resize', 'pause', 'waiting', 'stalled', 'emptied', 'ended']) {
+          element.addEventListener(type, syncStageVideo);
+        }
+        r.stage.replaceChildren(r.stageBackdrop, element);
+        syncStageVideo();
         r.cover.hidden = true; slide.classList.add('has-video');
         return;
       }
@@ -460,7 +472,7 @@ function connectUi(slide, session) {
       tile.classList.remove('cam-off');
     }),
     session.on('video-gone', participant => {
-      if (participant === session.live.host.id) { r.stage.replaceChildren(); r.cover.hidden = false; slide.classList.remove('has-video'); return; }
+      if (participant === session.live.host.id) { r.stage.replaceChildren(r.stageBackdrop); r.stageBackdrop.hidden = false; r.cover.hidden = false; slide.classList.remove('has-video'); return; }
       const tile = r.guests.querySelector(`[data-uid="${cssId(participant)}"]`);
       if (!tile) return;
       tile.querySelector('video')?.remove();
@@ -1032,7 +1044,11 @@ export class LiveView {
     this.goWait?.clear();
     this.goPreviewStream?.getTracks().forEach(track => track.stop());
     this.goPreviewStream = null;
-    if (this.goPreviewVideo) this.goPreviewVideo.srcObject = null;
+    if (this.goPreviewVideo) {
+      this.goPreviewVideo.srcObject = null;
+      const backdrop = this.goPreviewVideo.parentElement?.querySelector('.gl-preview-backdrop');
+      if (backdrop) backdrop.hidden = false;
+    }
   }
 
   async #flipGoLivePreview() {
@@ -1059,7 +1075,14 @@ export class LiveView {
     let layout = 8;
     let layoutStyle = 'featured';
     let scope = 'public';
-    this.goPreviewVideo = h('video', { class: 'gl-preview-video', autoplay: true, muted: true, playsinline: true, 'aria-label': t('camera') });
+    this.goPreviewVideo = h('video', { class: 'gl-preview-video', poster: TRANSPARENT_VIDEO_POSTER, autoplay: true, muted: true, playsinline: true, 'aria-label': t('camera') });
+    const previewBackdrop = h('div', { class: 'gl-preview-backdrop', 'aria-hidden': 'true' }, brandMark('preview'));
+    for (const type of ['playing', 'loadeddata', 'resize', 'pause', 'waiting', 'stalled', 'emptied', 'ended']) {
+      this.goPreviewVideo.addEventListener(type, () => {
+        const hasVideo = !this.goPreviewVideo.paused && this.goPreviewVideo.readyState >= 2 && this.goPreviewVideo.videoWidth > 0;
+        previewBackdrop.hidden = hasVideo;
+      });
+    }
     this.goPreviewError = h('p', { class: 'gl-preview-error', role: 'status', 'aria-live': 'polite' });
     const close = h('button', { class: 'gl-close', type: 'button', 'aria-label': t('close'), onclick: () => sheet.close() }, '×');
     const rewardsSheet = new Sheet({ title: t('liveRewards'), className: 'lc-sheet gl-rewards-sheet', autoFocus: false });
@@ -1360,7 +1383,7 @@ export class LiveView {
       },
     }, label));
     dock.append(...dockTabs);
-    sheet.body.append(h('div', { class: 'gl-preview' }, this.goPreviewVideo,
+    sheet.body.append(h('div', { class: 'gl-preview' }, previewBackdrop, this.goPreviewVideo,
       h('div', { class: 'gl-preview-overlay' }),
       h('header', { class: 'gl-topbar' }, close, h('div', { class: 'gl-top-actions' }, rewards, readiness, statusIcons)),
       mission, this.goPreviewError),

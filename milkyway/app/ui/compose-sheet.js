@@ -6,7 +6,8 @@ import { createVideoPreview, optimizeImage, optimizeVideo, yieldToBrowser } from
 import { profiles } from '../data/profiles.js';
 import { feed } from '../data/feed.js';
 import { Sheet } from './sheet.js';
-import { h, icon, toast, count, WaitIndicator } from './dom.js';
+import { h, icon, toast, count, WaitIndicator, brandMark } from './dom.js';
+import { TRANSPARENT_VIDEO_POSTER } from '../core/media.js';
 
 const MAX_IMAGE = 10 * 1024 * 1024;
 const MAX_VIDEO = 100 * 1024 * 1024;
@@ -197,8 +198,14 @@ export class ComposeSheet {
     this.captureChunks = [];
     this.recordingRequest = 0;
     this.recordingStarting = false;
-    this.cameraVideo = h('video', { class: 'creator-camera-video', autoplay: true, muted: true, playsinline: true, 'aria-label': t('camera') });
-    this.stage = h('div', { class: 'creator-stage', 'data-mode': 'photo' }, this.cameraVideo, this.preview);
+    this.cameraVideo = h('video', { class: 'creator-camera-video', poster: TRANSPARENT_VIDEO_POSTER, autoplay: true, muted: true, playsinline: true, 'aria-label': t('camera') });
+    this.cameraBackdrop = h('div', { class: 'creator-stage-backdrop', 'aria-hidden': 'true' }, brandMark('creator-stage'));
+    this.stage = h('div', { class: 'creator-stage', 'data-mode': 'photo' }, this.cameraBackdrop, this.cameraVideo, this.preview);
+    for (const type of ['playing', 'loadeddata', 'resize', 'pause', 'waiting', 'stalled', 'emptied', 'ended']) {
+      this.cameraVideo.addEventListener(type, () => {
+        this.cameraBackdrop.hidden = !this.cameraVideo.paused && this.cameraVideo.readyState >= 2 && this.cameraVideo.videoWidth > 0;
+      });
+    }
     this.stageMessage = h('div', { class: 'creator-stage-message', role: 'status', 'aria-live': 'polite' });
     this.textStage = h('div', { class: 'creator-text-stage', hidden: true });
     this.photoEditor = this.#createPhotoEditor();
@@ -1191,6 +1198,7 @@ export class ComposeSheet {
     this.cameraStream?.getTracks().forEach(track => track.stop());
     this.cameraStream = null;
     this.cameraVideo.srcObject = null;
+    this.cameraBackdrop.hidden = false;
     this.shutter?.classList.remove('is-recording');
   }
 

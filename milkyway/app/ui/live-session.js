@@ -26,6 +26,7 @@
 // Live room signals: understands {type:'lv-heart'} / {type:'lv-sync'} signals and sends them.
 import { config } from '../config.js';
 import { t } from '../core/i18n.js';
+import { TRANSPARENT_VIDEO_POSTER } from '../core/media.js';
 import { api, auth, supabase, accessToken } from '../core/net.js';
 import { loadLiveKit } from '../core/sdk.js';
 import { assertRoomAccess } from '../core/livekit-access.js';
@@ -790,6 +791,8 @@ export class LiveSession extends Emitter {
     const element = track.attach();
     element.playsInline = true;
     element.muted = true;
+    element.controls = false;
+    element.poster = TRANSPARENT_VIDEO_POSTER;
     element.className = 'live-track';
     if (local) element.classList.add('local');
     if (local && this.facing !== 'environment') element.classList.add('mirror');
