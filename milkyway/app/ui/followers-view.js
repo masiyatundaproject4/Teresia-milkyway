@@ -5,12 +5,11 @@ import { t } from '../core/i18n.js';
 import { profiles } from '../data/profiles.js';
 import { loadSuggestions } from '../data/promoted.js';
 import { actions } from '../data/feed.js';
+import { safePublicText } from '../data/usernames.js';
 import { Sheet } from './sheet.js';
 import { avatar, h, icon, toast } from './dom.js';
 
-const displayText = value => typeof value === 'string'
-  ? value.replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, '').replace(/\b(?:null|undefined)\b/gi, '').replace(/\s+/g, ' ').trim()
-  : '';
+const displayText = safePublicText;
 
 const safePerson = row => ({
   id: String(row?.id || ''),

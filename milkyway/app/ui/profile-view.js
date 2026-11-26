@@ -321,6 +321,8 @@ export class ProfileView {
     this.sheet.body.append(this.content);
     this.token = 0;
     this.posts = [];
+    this.postAudiences = {};
+    this.audienceLoadError = false;
     this.viewer = null;
     this.cropper = new ProfileCropSheet();
     this.historyEntry = null;
@@ -420,7 +422,7 @@ export class ProfileView {
     } else {
       this.grid.replaceChildren(...posts.map(post => tile(post, {
         open: () => this.#openPost(post),
-        menu: this.own && post.author_id === auth.userId ? () => this.#postMenu(post) : null,
+        menu: () => this.#postMenu(post),
       })));
     }
   }
@@ -429,9 +431,21 @@ export class ProfileView {
     this.activeTab = tab;
     this.tabs?.forEach(button => button.setAttribute('aria-selected', String(button.dataset.profileTab === tab)));
     const token = this.token;
-    if (tab === 'posts') { this.#renderGrid(); return; }
-    if (tab === 'private') {
-      this.#renderGrid([], { message: !this.own && this.profilePrivate ? t('privateAccount') : t('empty') });
+    if (tab === 'posts' || tab === 'private') {
+      if (!this.own && tab === 'private') {
+        this.#renderGrid([], { message: t('privateActivity') });
+        return;
+      }
+      if (this.own && this.audienceLoadError) {
+        this.#renderGrid([], { message: t('retry') });
+        return;
+      }
+      const posts = this.posts.filter(post => tab === 'private'
+        ? post.audience !== 'everyone'
+        : post.audience === 'everyone');
+      this.#renderGrid(posts, {
+        message: posts.length ? '' : tab === 'private' ? t('noPrivatePosts') : this.own ? t('noPostsYet') : t('empty'),
+      });
       return;
     }
     if (!this.own) { this.#renderGrid([], { message: t('privateActivity') }); return; }
@@ -456,7 +470,11 @@ export class ProfileView {
       if (error) throw error;
       if (token !== this.token || tab !== this.activeTab) return;
       const byId = new Map((Array.isArray(data) ? data : []).map(row => [String(row.id), normalizeProfilePost(row)]));
-      const posts = ids.map(id => byId.get(id)).filter(Boolean);
+      const posts = ids.map(id => byId.get(id)).filter(Boolean).map(post => ({
+        ...post,
+        audience: this.postAudiences[post.id] || 'everyone',
+        ...(tab === 'saved' ? { saved: true } : { liked: true }),
+      }));
       this.#renderGrid(posts, { message: posts.length ? '' : tab === 'saved' ? t('noSaved') : t('empty') });
     } catch (error) {
       if (token === this.token && tab === this.activeTab) this.#renderGrid([], { message: profileText(error?.message) || t('retry') });
@@ -465,29 +483,111 @@ export class ProfileView {
 
   #postMenu(post) {
     const message = h('p', { class: 'muted center', role: 'status' });
+    const ownPost = String(post.author_id || post.author?.id || '') === String(auth.userId || '');
+    const busy = button => { button.disabled = true; };
+    const recover = (button, error) => {
+      console.error('[profile] post action failed.', error);
+      button.disabled = false;
+      message.textContent = t('retry');
+    };
+    const save = h('button', { class: 'pill-btn wide', type: 'button' }, post.saved ? t('unsave') : t('save'));
+    save.onclick = async () => {
+      if (!this.hooks.requireLogin()) return;
+      busy(save); message.textContent = '';
+      try {
+        await actions.save(post, !post.saved);
+        post.saved = !post.saved;
+        if (this.activeTab === 'saved' && !post.saved) {
+          this.displayPosts = (this.displayPosts || []).filter(item => item.id !== post.id);
+          this.#renderGrid(this.displayPosts, { message: this.displayPosts.length ? '' : t('noSaved') });
+        }
+        save.textContent = post.saved ? t('unsave') : t('save');
+        save.disabled = false;
+      } catch (error) { recover(save, error); }
+    };
+    const items = [
+      h('button', { class: 'pill-btn wide', type: 'button', onclick: () => { this.menu.close(); this.#openPost(post); } }, t('openPost')),
+    ];
+    if (ownPost) {
+      const postId = String(post.id);
+      const audienceKnown = Object.prototype.hasOwnProperty.call(this.postAudiences, postId);
+      const visibility = h('button', { class: 'pill-btn wide', type: 'button' },
+        audienceKnown ? (post.audience === 'everyone' ? t('makePrivate') : t('makePublic')) : t('loading'));
+      visibility.disabled = !audienceKnown;
+      visibility.onclick = async () => {
+        busy(visibility); message.textContent = '';
+        try {
+          const audience = post.audience === 'everyone' ? 'only_me' : 'everyone';
+          await actions.setAudience(post, audience);
+          post.audience = audience;
+          this.postAudiences[post.id] = audience;
+          visibility.textContent = audience === 'everyone' ? t('makePrivate') : t('makePublic');
+          visibility.disabled = false;
+          if (this.activeTab === 'posts' && audience !== 'everyone'
+            || this.activeTab === 'private' && audience === 'everyone') {
+            this.#selectTab(this.activeTab);
+          }
+          toast(t('postVisibilityUpdated'));
+        } catch (error) { recover(visibility, error); }
+      };
+      if (!audienceKnown) {
+        api(`/api/milkyway-gallery?action=audiences&ids=${encodeURIComponent(postId)}`, { timeout: 12000 }).then(result => {
+          post.audience = result?.own?.[postId] || 'everyone';
+          this.postAudiences[postId] = post.audience;
+          visibility.textContent = post.audience === 'everyone' ? t('makePrivate') : t('makePublic');
+          visibility.disabled = false;
+        }).catch(error => {
+          console.error('[profile] post audience could not be loaded.', error);
+          message.textContent = t('retry');
+        });
+      }
+      items.push(visibility);
+    }
+    items.push(save, h('button', {
+      class: 'pill-btn wide', type: 'button', onclick: () => {
+        this.menu.close();
+        openShare({
+          title: profileText(post.author_name || this.profile?.name) || 'MilkyWay',
+          text: profileText(post.caption).slice(0, 120),
+          url: `${location.origin}/share/${encodeURIComponent(post.id)}`,
+        });
+      },
+    }, t('shareLink')));
     const remove = h('button', { class: 'pill-btn danger wide', type: 'button' }, t('deletePost'));
     let armed = 0;
-    remove.onclick = async () => {
-      if (!armed) {
-        remove.textContent = t('tapAgainDelete'); remove.classList.add('armed');
-        armed = setTimeout(() => { armed = 0; remove.textContent = t('deletePost'); remove.classList.remove('armed'); }, 3000);
-        return;
-      }
-      clearTimeout(armed);
-      remove.disabled = true; remove.textContent = t('deleting'); message.textContent = '';
-      try {
-        await actions.remove(post);
-        this.#removed(post);
-        this.menu.close();
-        toast(t('postDeleted'));
-      } catch (error) {
-        armed = 0; remove.disabled = false; remove.textContent = t('deletePost'); remove.classList.remove('armed');
-        message.textContent = profileText(error?.message) || t('deleteFailed');
-      }
-    };
-    this.menu.body.replaceChildren(h('div', { class: 'stack' },
-      h('button', { class: 'pill-btn wide', type: 'button', onclick: () => { this.menu.close(); this.#openPost(post); } }, t('openPost')),
-      remove, message,
+    if (ownPost) {
+      remove.onclick = async () => {
+        if (!armed) {
+          remove.textContent = t('tapAgainDelete'); remove.classList.add('armed');
+          armed = setTimeout(() => { armed = 0; remove.textContent = t('deletePost'); remove.classList.remove('armed'); }, 3000);
+          return;
+        }
+        clearTimeout(armed);
+        remove.disabled = true; remove.textContent = t('deleting'); message.textContent = '';
+        try {
+          await actions.remove(post);
+          this.#removed(post);
+          this.menu.close();
+          toast(t('postDeleted'));
+        } catch (error) {
+          console.error('[profile] post deletion failed.', error);
+          armed = 0; remove.disabled = false; remove.textContent = t('deletePost'); remove.classList.remove('armed');
+          message.textContent = t('deleteFailed');
+        }
+      };
+      items.push(remove);
+    }
+    if (auth.signedIn() && typeof post.saved !== 'boolean') {
+      busy(save);
+      api(`${config.api.feed}?action=saved`, { timeout: 12000 }).then(result => {
+        post.saved = (Array.isArray(result?.saved) ? result.saved : []).some(item => String(item?.postId) === String(post.id));
+        save.textContent = post.saved ? t('unsave') : t('save');
+        save.disabled = false;
+      }).catch(error => recover(save, error));
+    }
+    this.menu.title = t('postOptions');
+    this.menu.body.replaceChildren(h('div', { class: 'stack post-menu-actions' },
+      ...items, message,
       h('button', { class: 'link center', type: 'button', onclick: () => this.menu.close() }, t('cancel'))));
     this.menu.open();
   }
@@ -500,6 +600,8 @@ export class ProfileView {
     this.id = id;
     this.own = id === auth.userId;
     this.activeTab = 'posts';
+    this.postAudiences = {};
+    this.audienceLoadError = false;
     this.sheet.panel.classList.toggle('profile-sheet-fullscreen', fullscreen);
     this.sheet.title = this.own ? t('me') : (profileText(person?.name || profiles.peek(id)?.name) || t('profile'));
     this.sheet.panel.setAttribute('aria-label', this.sheet.title);
@@ -652,6 +754,21 @@ export class ProfileView {
       const { data: pin } = await quiet(sb.from('mw_creator_pins').select('post_id').eq('creator_id', id).maybeSingle());
       const profilePosts = Array.isArray(posts.data) ? posts.data : [];
       if (pin?.post_id) profilePosts.sort((a, b) => Number(b.id === pin.post_id) - Number(a.id === pin.post_id));
+      let audienceMap = {};
+      if (this.own && profilePosts.length) {
+        try {
+          const result = await api(`/api/milkyway-gallery?action=audiences&ids=${profilePosts.map(post => encodeURIComponent(post.id)).join(',')}`, { timeout: 12000 });
+          audienceMap = result?.own && typeof result.own === 'object' ? result.own : {};
+        } catch (error) {
+          this.audienceLoadError = true;
+          console.warn('[profile] post audiences could not be loaded.', error);
+        }
+      }
+      this.postAudiences = audienceMap;
+      const postsWithAudience = profilePosts.map(post => ({
+        ...post,
+        audience: this.own ? audienceMap[post.id] || 'everyone' : 'everyone',
+      }));
       const followingIds = new Set((followingRows.data || []).map(item => String(item.following_id)));
       const friends = (followerRows.data || []).reduce((total, item) => total + Number(followingIds.has(String(item.follower_id))), 0);
       const renderData = {
@@ -660,7 +777,7 @@ export class ProfileView {
         following: following.count || 0,
         friends,
         requests: requests.count || 0,
-        posts: profilePosts,
+        posts: postsWithAudience,
         postsError: profileText(posts.error?.message),
       };
       this.#render(renderData);
@@ -736,6 +853,7 @@ export class ProfileView {
 
   #render({ profile, followers = 0, following = 0, friends = 0, requests = 0, posts = [], loading = false, error = false, postsError = '' }) {
     profile = profile && typeof profile === 'object' ? profile : { id: this.id || auth.userId || '' };
+    this.profile = profile;
     this.content.classList.toggle('has-cover-shortcut', this.own);
     this.profilePrivate = Boolean(profile.private);
     this.posts = Array.isArray(posts) ? posts.filter(post => post && typeof post === 'object') : [];
@@ -744,7 +862,10 @@ export class ProfileView {
       h('button', { type: 'button', onclick: () => this.hooks.openFollowers?.(profile, { tab: 'following' }) }, h('b', {}, count(following)), t('followingCount')),
       h('button', { type: 'button', onclick: () => this.hooks.openFollowers?.(profile, { tab: 'followers' }) }, h('b', {}, count(followers)), t('followers')),
       h('button', { type: 'button', onclick: () => this.hooks.openFollowers?.(profile, { tab: 'friends' }) }, h('b', {}, count(friends)), t('friends')),
-      h('span', {}, this.postCount, t('posts')));
+      h('button', { type: 'button', onclick: () => {
+        this.#selectTab('posts');
+        requestAnimationFrame(() => this.grid?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      } }, this.postCount, t('posts')));
     const actionsRow = h('div', { class: 'profile-actions' });
     if (this.own) {
       actionsRow.append(
@@ -782,7 +903,7 @@ export class ProfileView {
     grid.id = 'profileMediaGrid';
     const tabItems = [
       ['posts', t('posts'), '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>'],
-      ['private', t('privateAccount'), '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 10V7a6 6 0 0 1 12 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h8V7a4 4 0 0 0-8 0zm4 4a2 2 0 0 0-1 3.73V19h2v-1.27A2 2 0 0 0 12 14z"/></svg>'],
+      ['private', t('privatePosts'), '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 10V7a6 6 0 0 1 12 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h8V7a4 4 0 0 0-8 0zm4 4a2 2 0 0 0-1 3.73V19h2v-1.27A2 2 0 0 0 12 14z"/></svg>'],
       ['saved', t('savedPosts'), icon.bookmark],
       ['liked', t('likedPosts'), icon.heart],
     ];
@@ -794,7 +915,7 @@ export class ProfileView {
       })));
     if (loading) this.#renderGrid([], { loading: true });
     else if (error || postsError) this.#renderGrid([], { message: profileText(postsError) || t('retry') });
-    else this.#renderGrid();
+    else void this.#selectTab(this.activeTab || 'posts');
 
     const coverUrl = profileText(profile.cover);
     const profileCover = h('div', { class: 'profile-cover', 'aria-hidden': 'true' },
@@ -1162,6 +1283,9 @@ function tile(post, { open, menu }) {
     node.append(h('button', { class: 'tile-more', type: 'button', 'aria-label': t('postOptions'), onclick: event => { event.stopPropagation(); menu(); } }, '⋯'));
   }
   node.addEventListener('click', open);
-  node.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+  node.addEventListener('keydown', event => {
+    if (event.target !== node) return;
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+  });
   return node;
 }
