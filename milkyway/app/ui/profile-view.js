@@ -45,6 +45,10 @@ function cacheCover(id, url) {
 
 const PROFILE_POST_REQUIRED = ['id', 'caption', 'media_url', 'media_type', 'created_at'];
 const PROFILE_POST_OPTIONAL = ['author_id', 'user_id', 'username', 'author_username', 'scheduled_at', 'slideshow_style', 'audio_url', 'media_items', 'media_preview_items'];
+const PROFILE_POST_PAGE_SIZE = 500;
+const isPublicProfilePost = post => post?.public_post === true;
+const isPostsTabPost = post => isPublicProfilePost(post) || !post?.audience || post.audience === 'everyone';
+const isPrivateProfilePost = post => !isPublicProfilePost(post) && Boolean(post?.audience) && post.audience !== 'everyone';
 const PROFILE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
 const PROFILE_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 const PROFILE_PHOTO_MAX_PIXELS = 40_000_000;
@@ -324,19 +328,24 @@ async function loadProfilePosts(sb, id, username = '') {
   let publicPostsError = null;
   for (const [column, value] of ownerFilters) {
     const availableOptional = [...optional];
+    let offset = 0;
     while (true) {
       const fields = [...PROFILE_POST_REQUIRED, ...availableOptional].join(',');
       let result;
       try {
-        result = await sb.from('mw_posts').select(fields).eq(column, value).order('created_at', { ascending: false }).limit(100);
+        result = await sb.from('mw_posts').select(fields).eq(column, value)
+          .order('created_at', { ascending: false }).range(offset, offset + PROFILE_POST_PAGE_SIZE - 1);
       } catch (error) {
         lastError = error;
         break;
       }
       if (!result.error) {
         const rows = Array.isArray(result.data) ? result.data : [];
-        results.push(...rows.filter(row => row && typeof row === 'object' && profileOwnsPost(row, id, username))
-          .map(row => normalizeProfilePost(row, id)));
+        results.push(...rows.filter(row => row && typeof row === 'object').map(row => normalizeProfilePost(row, id)));
+        if (rows.length === PROFILE_POST_PAGE_SIZE) {
+          offset += PROFILE_POST_PAGE_SIZE;
+          continue;
+        }
         break;
       }
       const missing = missingProfileColumn(result.error, [...availableOptional, ...PROFILE_POST_REQUIRED]);
@@ -357,7 +366,7 @@ async function loadProfilePosts(sb, id, username = '') {
   }
   const merged = new Map(cachedProfilePosts(id, username).map(post => [String(post.id), post]));
   for (const post of results) merged.set(String(post.id), post);
-  const data = [...merged.values()].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || '')).slice(0, 100);
+  const data = [...merged.values()].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''));
   return { data, error: data.length ? null : lastError || publicPostsError };
 }
 
@@ -425,7 +434,7 @@ export class ProfileView {
     if (at >= 0) this.posts.splice(at, 1);
     this.displayPosts = (this.displayPosts || []).filter(item => String(item.id) !== postId);
     this.grid?.querySelector(`[data-post="${CSS.escape(postId)}"]`)?.remove();
-    if (at >= 0 && this.postCount) this.postCount.textContent = count(this.posts.length);
+    if (at >= 0 && this.postCount) this.postCount.textContent = count(this.posts.filter(isPostsTabPost).length);
     if (this.grid && !this.displayPosts.length) {
       const message = this.activeTab === 'saved' ? t('noSaved')
         : this.activeTab === 'liked' ? t('empty')
@@ -512,9 +521,7 @@ export class ProfileView {
         this.#renderGrid([], { message: t('retry') });
         return;
       }
-      const posts = this.posts.filter(post => tab === 'private'
-        ? post.audience !== 'everyone'
-        : post.audience === 'everyone');
+      const posts = this.posts.filter(tab === 'private' ? isPrivateProfilePost : isPostsTabPost);
       this.#renderGrid(posts, {
         message: posts.length ? '' : tab === 'private' ? t('noPrivatePosts') : this.own ? t('noPostsYet') : t('empty'),
       });
@@ -942,7 +949,7 @@ export class ProfileView {
     profile = profile && typeof profile === 'object' ? profile : { id: this.id || auth.userId || '' };
     profile = {
       ...profile,
-      name: profileText(profile.name),
+      name: profileText(profile.name) || 'MilkyWay',
       username: profileText(profile.username),
       role: profileText(profile.role),
       status: profileText(profile.status),
@@ -955,7 +962,7 @@ export class ProfileView {
     this.content.classList.toggle('has-cover-shortcut', this.own);
     this.profilePrivate = Boolean(profile.private);
     this.posts = Array.isArray(posts) ? posts.filter(post => post && typeof post === 'object') : [];
-    this.postCount = h('b', {}, count(this.posts.length));
+    this.postCount = h('b', {}, count(this.posts.filter(isPostsTabPost).length));
     const stats = h('div', { class: 'profile-stats' },
       h('button', { type: 'button', onclick: () => this.hooks.openFollowers?.(profile, { tab: 'following' }) }, h('b', {}, count(following)), t('followingCount')),
       h('button', { type: 'button', onclick: () => this.hooks.openFollowers?.(profile, { tab: 'followers' }) }, h('b', {}, count(followers)), t('followers')),
@@ -1067,21 +1074,30 @@ export class ProfileView {
     const interests = Array.isArray(profile.interests)
       ? profile.interests.map(profileText).filter(Boolean)
       : profileText(profile.interests).split(/[,\n]/).map(value => value.trim()).filter(Boolean);
+    const displayName = profileText(profile.name) || 'MilkyWay';
+    const username = profileText(profile.username).replace(/^@+/, '');
+    const profileHead = h('header', { class: 'profile-head' },
+      avatarControl,
+      h('div', { class: 'profile-names' },
+        h('b', {}, displayName),
+        username ? h('span', { class: 'muted' }, `@${username}`) : null,
+        (profileText(profile.role) || profileText(profile.status))
+          ? h('small', { class: 'profile-role' }, profileText(profile.role) || profileText(profile.status))
+          : null,
+        profile.private ? h('small', { class: 'muted' }, `🔒 ${t('privateAccount')}`) : null,
+        presence.isOnline(profile.id) || (this.own && presence.visible)
+          ? h('small', { class: 'presence-label' }, t('activeNow'))
+          : null));
+    const bio = profileText(profile.bio)
+      ? h('p', { class: 'profile-bio' }, profileText(profile.bio))
+      : null;
+    const interestTags = interests.length
+      ? h('div', { class: 'profile-interests', 'aria-label': t('profileContent') }, ...interests.map(value => h('span', {}, value)))
+      : null;
+    const profileHeader = h('section', { class: 'profile-header', 'aria-label': t('profile') },
+      profileCover, coverControl, toolbar, profileHead, bio, interestTags, stats, actionsRow);
     this.content.replaceChildren(
-      profileCover,
-      coverControl,
-      toolbar,
-      h('div', { class: 'profile-head' },
-        avatarControl,
-        h('div', { class: 'profile-names' },
-          h('b', {}, profileText(profile.name)),
-          profileText(profile.username) ? h('span', { class: 'muted' }, `@${profileText(profile.username)}`) : null,
-          (profileText(profile.role) || profileText(profile.status)) ? h('small', { class: 'profile-role' }, profileText(profile.role) || profileText(profile.status)) : null,
-          profile.private ? h('small', { class: 'muted' }, `🔒 ${t('privateAccount')}`) : null,
-          presence.isOnline(profile.id) || (this.own && presence.visible) ? h('small', { class: 'presence-label' }, t('activeNow')) : null)),
-      profileText(profile.bio) ? h('p', { class: 'profile-bio' }, profileText(profile.bio)) : null,
-      interests.length ? h('div', { class: 'profile-interests', 'aria-label': 'Interests' }, ...interests.map(value => h('span', {}, value))) : null,
-      stats, actionsRow, tabs, grid);
+      profileHeader, tabs, grid);
   }
 
   #edit(profile, { openPicker = false, openCoverPicker = false, photo: initialPhoto = null } = {}) {

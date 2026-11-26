@@ -1836,7 +1836,7 @@ test('public posts use the published schema without owner or publication filteri
       return {
         select(columns) { selected = columns; return this; },
         order(column, options) { assert.equal(column, 'created_at'); assert.deepEqual(options, { ascending: false }); return this; },
-        limit(value) { assert.equal(value, 100); return Promise.resolve({ data: rows, error: null }); },
+        range(from, to) { assert.equal(from, 0); assert.equal(to, 499); return Promise.resolve({ data: rows, error: null }); },
       };
     },
     storage: {
@@ -1850,13 +1850,48 @@ test('public posts use the published schema without owner or publication filteri
   assert.equal(posts.length, 17);
   assert.equal(queriedTable, 'posts');
   assert.equal(selected, 'id,created_at,title,category,description,media_url,media_type,title_en,title_sw,description_en,description_sw,storage_path,published,extra_info');
-  assert.deepEqual(posts.map(post => post.published), [false, null]);
+  assert.deepEqual(posts.slice(0, 2).map(post => post.published), [false, null]);
   assert.equal(storagePath, 'uploads/draft.jpg');
   assert.equal(posts[0].media_url, 'https://storage.example.test/uploads/draft.jpg');
   assert.equal(posts[0].caption, 'Draft EN\nFirst');
   assert.equal(posts[1].caption, 'Legacy');
   assert.ok(posts.every(post => post.public_post && post.author_id === ''));
   assert.ok(posts.every(post => post.audience === 'everyone'));
+});
+
+test('public profile post loader fetches every page', async () => {
+  const rows = Array.from({ length: 501 }, (_, index) => ({
+    id: `page-${index}`,
+    created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+    title: `Post ${index}`,
+    category: 'art',
+    description: '',
+    media_url: `https://cdn.example.test/${index}.jpg`,
+    media_type: 'image',
+    title_en: '',
+    title_sw: '',
+    description_en: '',
+    description_sw: '',
+    storage_path: '',
+    published: false,
+    extra_info: null,
+  }));
+  const offsets = [];
+  const sb = {
+    from() {
+      return {
+        select() { return this; },
+        order() { return this; },
+        range(from, to) {
+          offsets.push([from, to]);
+          return Promise.resolve({ data: rows.slice(from, to + 1), error: null });
+        },
+      };
+    },
+  };
+  const posts = await loadPublicPosts(sb);
+  assert.equal(posts.length, 501);
+  assert.deepEqual(offsets, [[0, 499], [500, 999]]);
 });
 
 test('Nova profile merges public Orbit posts into the grid and counter data', () => {
@@ -1870,7 +1905,13 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.doesNotMatch(profile, /quiet\(loadProfilePosts\(sb, id, username\)\)/);
   assert.match(profile, /cachedProfilePosts\(id, username\)/);
   assert.match(profile, /this\.posts = Array\.isArray\(posts\) \? posts\.filter/);
-  assert.match(profile, /count\(this\.posts\.length\)/);
+  assert.match(profile, /count\(this\.posts\.filter\(isPostsTabPost\)\.length\)/);
+  assert.match(profile, /const isPostsTabPost = post => isPublicProfilePost\(post\) \|\| !post\?\.audience \|\| post\.audience === 'everyone'/);
+  assert.match(profile, /this\.posts\.filter\(tab === 'private' \? isPrivateProfilePost : isPostsTabPost\)/);
+  assert.match(profile, /const profileHeader = h\('section', \{ class: 'profile-header'/);
+  assert.match(profile, /profileHeader, tabs, grid/);
+  assert.match(profile, /\.range\(offset, offset \+ PROFILE_POST_PAGE_SIZE - 1\)/);
+  assert.doesNotMatch(profile, /sort\(\(a, b\) => Date\.parse\(b\.created_at \|\| ''\) - Date\.parse\(a\.created_at \|\| ''\)\)\.slice\(0, 100\)/);
   assert.match(profile, /audience: row\.public_post \? 'everyone' : row\.audience/);
   assert.match(profile, /\^\(\?:null\|undefined\)\$/i);
   assert.match(publicPosts, /select\(columns\)/);

@@ -3,6 +3,7 @@ const PUBLIC_POST_COLUMNS = [
   'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published',
 ].join(',');
 const PUBLIC_POST_OPTIONAL_COLUMNS = ['extra_info'];
+const PUBLIC_POST_PAGE_SIZE = 500;
 
 const text = value => {
   if (typeof value !== 'string') return '';
@@ -28,16 +29,20 @@ function publicMediaUrl(sb, row) {
 
 export async function loadPublicPosts(sb) {
   let fields = [...PUBLIC_POST_OPTIONAL_COLUMNS];
-  let data;
+  const data = [];
+  let offset = 0;
   while (true) {
     const columns = [...PUBLIC_POST_COLUMNS, ...fields].join(',');
     const result = await sb.from('posts')
       .select(columns)
       .order('created_at', { ascending: false })
-      .limit(100);
+      .range(offset, offset + PUBLIC_POST_PAGE_SIZE - 1);
     if (!result.error) {
-      data = result.data;
-      break;
+      const page = Array.isArray(result.data) ? result.data : [];
+      data.push(...page);
+      if (page.length < PUBLIC_POST_PAGE_SIZE) break;
+      offset += PUBLIC_POST_PAGE_SIZE;
+      continue;
     }
     const missingOptional = fields.find(column => {
       const message = String(result.error?.message || '');

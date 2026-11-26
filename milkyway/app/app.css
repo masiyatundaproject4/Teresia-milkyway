@@ -680,9 +680,10 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
   display: grid; background: transparent; opacity: 0;
 }
 .profile-sheet .sheet-title { display: none; }
-.profile-sheet .sheet-body { min-height: 0; padding: 0 0 env(safe-area-inset-bottom); }
-.profile { position: relative; display: grid; gap: 12px; }
-.profile::before {
+.profile-sheet .sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 env(safe-area-inset-bottom); }
+.profile { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; min-width: 0; }
+.profile-header { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 12px; min-width: 0; padding-bottom: 14px; }
+.profile-header::before {
   content: ""; position: absolute; z-index: 0; top: 0; left: 0; right: 0; height: 180px;
   border-top: 1px solid rgba(191,205,255,.18); border-bottom: 1px solid rgba(191,205,255,.18);
   background:
@@ -694,7 +695,8 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
   pointer-events: none;
 }
 .profile > * { position: relative; z-index: 1; }
-.profile .profile-cover { position: absolute; z-index: 0; inset: 0 0 auto; height: 180px; overflow: hidden; pointer-events: none; }
+.profile-header > * { position: relative; z-index: 1; }
+.profile-header .profile-cover { position: absolute; z-index: 0; inset: 0 0 auto; height: 180px; overflow: hidden; pointer-events: none; }
 .profile-cover img { width: 100%; height: 100%; object-fit: cover; filter: brightness(.7) saturate(.9); }
 .profile-cover::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(4,6,24,.24), rgba(4,6,24,.86)); }
 .profile .profile-cover-shortcut {
@@ -773,7 +775,7 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .profile-activity-glyph svg { width: 19px; height: 19px; }
 .profile-activity-count { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; display: grid; place-items: center; padding: 0 4px; border: 1.5px solid #10122f; border-radius: 99px; background: linear-gradient(135deg, #ff617d, #d8295b); color: #fff; font-size: 9px; font-weight: 800; line-height: 1; box-shadow: 0 0 9px rgba(255,73,116,.42); }
 .profile-head, .profile-bio, .profile-stats, .profile-actions, .mw-profile-services { margin-left: 14px; margin-right: 14px; }
-.profile-head { order: 0; display: flex; align-items: flex-end; gap: 14px; padding-top: 96px; }
+.profile-head { display: flex; align-items: flex-end; gap: 14px; padding-top: 96px; }
 .profile-avatar-shortcut, .nova-profile-photo-button { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
 .profile-head .avatar { --s: 84px; border: 3px solid rgba(255,255,255,.88); box-shadow: 0 5px 18px rgba(0,0,0,.4); }
 .profile-avatar-shortcut:focus-visible, .nova-profile-photo-button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
@@ -781,15 +783,14 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .profile.has-cover-shortcut .profile-names { padding-right: 42px; }
 .profile-names b { font-size: clamp(16px, 4.5vw, 19px); line-height: 1.15; overflow-wrap: anywhere; }
 .profile-names .muted, .profile-names small { overflow-wrap: anywhere; }
-.profile-bio { order: 2; margin: 0 14px; white-space: pre-line; overflow-wrap: anywhere; }
+.profile-bio { margin-top: 0; margin-bottom: 0; white-space: pre-line; overflow-wrap: anywhere; }
 .profile-role { color: #d3c4ff; font-size: 11.5px; font-weight: 650; }
-.profile-interests { order: 2; display: flex; flex-wrap: wrap; gap: 6px; margin: -5px 14px 0; }
+.profile-interests { display: flex; flex-wrap: wrap; gap: 6px; margin: -5px 14px 0; }
 .profile-interests span { max-width: 100%; padding: 4px 9px; border: 1px solid rgba(166,146,255,.22); border-radius: 99px; background: rgba(73,57,132,.22); color: #ddd5ff; font-size: 11px; overflow-wrap: anywhere; }
-.mw-profile-services { order: 6; }
+.mw-profile-services { margin-top: 12px; }
 .profile-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); text-align: center; font-size: 11.5px; color: var(--muted); }
 .profile-stats b { display: block; font-size: 17px; color: var(--fg); }
-.profile-stats { order: 3; }
-.profile-actions { position: static; order: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.profile-actions { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .profile-actions .pill-btn:only-child { grid-column: 1 / -1; }
 .profile-actions .pill-btn {
   min-width: 0; min-height: 32px; padding: 6px 5px; border: 1px solid rgba(190,174,255,.2);
@@ -819,7 +820,7 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
   font-size: 17px; font-weight: 700; line-height: 1; box-shadow: 0 0 12px rgba(155,92,255,.45);
   pointer-events: none;
 }
-.profile-tabs { order: 4; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin: 0 14px; padding: 4px; border: 1px solid rgba(174,158,255,.14); border-radius: 12px; background: linear-gradient(145deg, rgba(22,20,53,.9), rgba(7,9,29,.94)); }
+.profile-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin: 0 14px; padding: 4px; border: 1px solid rgba(174,158,255,.14); border-radius: 12px; background: linear-gradient(145deg, rgba(22,20,53,.9), rgba(7,9,29,.94)); }
 .profile-tab { min-width: 0; min-height: 34px; display: grid; place-items: center; padding: 5px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); transition: color .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease; }
 .profile-tab svg { width: 17px; height: 17px; }
 .profile-tab:hover { color: #fff; background: rgba(123,94,196,.16); }
@@ -911,7 +912,7 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .profile-stats button { min-width: 0; color: inherit; font: inherit; }
 .profile-stats button:active { color: var(--fg); }
 .profile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-.profile-grid { order: 5; }
+.profile-grid { min-height: 96px; align-content: start; }
 .profile-grid > p { grid-column: 1 / -1; }
 .profile-tile { aspect-ratio: 3 / 4; overflow: hidden; border-radius: 6px; background: var(--panel-2); }
 .profile-tile img, .profile-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
