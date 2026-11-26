@@ -171,6 +171,19 @@ export const actions = {
       throw writeError(error);
     });
   },
+  async setAudience(post, audience) {
+    if (!auth.userId || String(post?.author_id || '') !== String(auth.userId)) {
+      throw Object.assign(new Error(t('signInToContinue')), { status: 401 });
+    }
+    if (!post?.id || !['everyone', 'only_me'].includes(audience)) throw new Error(t('retry'));
+    const result = await api(`/api/milkyway-gallery?action=audience&id=${encodeURIComponent(post.id)}`, {
+      method: 'POST', body: { audience }, timeout: 12000,
+    });
+    post.audience = result?.audience || audience;
+    if (post.audience !== 'everyone') dropPost(post.id);
+    else feeds.forEach(({ source }) => source.refresh().catch(error => console.warn('[feed] public post refresh failed', error)));
+    return post.audience;
+  },
   async follow(authorId, on) {
     if (on) {
       const cached = profiles.peek(authorId);
