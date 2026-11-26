@@ -911,8 +911,7 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .connection-preview-play svg { width: 12px; height: 12px; }
 .profile-stats button { min-width: 0; color: inherit; font: inherit; }
 .profile-stats button:active { color: var(--fg); }
-.profile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-.profile-grid { min-height: 96px; align-content: start; }
+.profile > .profile-grid { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; width: 100%; min-width: 0; min-height: 96px; align-content: start; visibility: visible; }
 .profile-grid > p { grid-column: 1 / -1; }
 .profile-tile { aspect-ratio: 3 / 4; overflow: hidden; border-radius: 6px; background: var(--panel-2); }
 .profile-tile img, .profile-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }

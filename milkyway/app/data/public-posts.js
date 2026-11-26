@@ -12,15 +12,16 @@ const text = value => {
   return cleaned.replace(/\b(?:null|undefined)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
 };
 
-function publicMediaUrl(sb, row) {
+export function portfolioMediaUrl(sb, row) {
   const mediaUrl = text(row.media_url);
   if (/^https?:\/\//i.test(mediaUrl)) return mediaUrl;
 
   let path = text(row.storage_path) || mediaUrl;
-  const publicStoragePath = path.match(/\/storage\/v1\/object\/public\/portfolio\/(.+)$/i);
+  if (/^https?:\/\//i.test(path)) return path;
+  const publicStoragePath = path.match(/\/storage\/v1\/object\/(?:public|sign)\/portfolio\/(.+)$/i);
   if (publicStoragePath) path = publicStoragePath[1];
-  else if (/^https?:\/\//i.test(path)) return '';
-  path = path.replace(/^portfolio\//i, '').replace(/^\/+/, '');
+  path = path.replace(/^\/?storage\/v1\/object\/(?:public|sign)\/portfolio\//i, '')
+    .replace(/^\/?portfolio\//i, '').replace(/^\/+/, '').split(/[?#]/, 1)[0];
   if (!path) return '';
 
   const url = sb.storage.from('portfolio').getPublicUrl(path)?.data?.publicUrl;
@@ -54,7 +55,7 @@ export async function loadPublicPosts(sb) {
   }
 
   return (Array.isArray(data) ? data : []).filter(row => row && row.id != null && !/^(?:null|undefined)$/i.test(String(row.id).trim())).map(row => {
-    const url = publicMediaUrl(sb, row);
+    const url = portfolioMediaUrl(sb, row);
     const mediaType = text(row.media_type) || (/\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i.test(url) ? 'video' : url ? 'image' : '');
     const swahili = typeof document !== 'undefined' && document.documentElement.lang === 'sw';
     const title = (swahili ? text(row.title_sw) || text(row.title_en) : text(row.title_en) || text(row.title_sw)) || text(row.title);

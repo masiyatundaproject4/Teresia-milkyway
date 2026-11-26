@@ -7,7 +7,7 @@ import { identifyMediaFile, openFilePicker } from '../core/media-files.js';
 import { optimizeImage } from '../core/media-optimizer.js';
 import { setImage, poster } from '../core/media.js';
 import { profiles } from '../data/profiles.js';
-import { loadPublicPosts } from '../data/public-posts.js';
+import { loadPublicPosts, portfolioMediaUrl } from '../data/public-posts.js';
 import { actions, feed } from '../data/feed.js';
 import { Sheet } from './sheet.js';
 import { h, icon, avatar, count, toast } from './dom.js';
@@ -44,7 +44,7 @@ function cacheCover(id, url) {
 }
 
 const PROFILE_POST_REQUIRED = ['id', 'caption', 'media_url', 'media_type', 'created_at'];
-const PROFILE_POST_OPTIONAL = ['author_id', 'user_id', 'username', 'author_username', 'scheduled_at', 'slideshow_style', 'audio_url', 'media_items', 'media_preview_items'];
+const PROFILE_POST_OPTIONAL = ['author_id', 'user_id', 'username', 'author_username', 'scheduled_at', 'slideshow_style', 'audio_url', 'media_items', 'media_preview_items', 'storage_path'];
 const PROFILE_POST_PAGE_SIZE = 500;
 const isPublicProfilePost = post => post?.public_post === true;
 const isPostsTabPost = post => isPublicProfilePost(post) || !post?.audience || post.audience === 'everyone';
@@ -306,14 +306,14 @@ const profileOwnsPost = (post, id, username) => {
   return ownerId === String(id) || Boolean(handle && (postUsername(post) === handle || ownerId.replace(/^@/, '').toLowerCase() === handle));
 };
 
-function cachedProfilePosts(id, username) {
+function cachedProfilePosts(id, username, sb = null) {
   const cached = ['foryou', 'following'].flatMap(scope => {
     const posts = feed(scope).source.value?.posts;
     return Array.isArray(posts) ? posts : [];
   });
   return cached.filter(post => post?.id && (profileOwnsPost(post, id, username)
     || (post.public_post === true && String(id) === String(auth.userId || ''))))
-    .map(post => normalizeProfilePost(post, id));
+    .map(post => normalizeProfilePost(post, id, sb));
 }
 
 async function loadProfilePosts(sb, id, username = '') {
@@ -341,7 +341,7 @@ async function loadProfilePosts(sb, id, username = '') {
       }
       if (!result.error) {
         const rows = Array.isArray(result.data) ? result.data : [];
-        results.push(...rows.filter(row => row && typeof row === 'object').map(row => normalizeProfilePost(row, id)));
+        results.push(...rows.filter(row => row && typeof row === 'object').map(row => normalizeProfilePost(row, id, sb)));
         if (rows.length === PROFILE_POST_PAGE_SIZE) {
           offset += PROFILE_POST_PAGE_SIZE;
           continue;
@@ -364,23 +364,31 @@ async function loadProfilePosts(sb, id, username = '') {
       console.warn('[profile] public posts could not be loaded.', error);
     }
   }
-  const merged = new Map(cachedProfilePosts(id, username).map(post => [String(post.id), post]));
+  const merged = new Map(cachedProfilePosts(id, username, sb).map(post => [String(post.id), post]));
   for (const post of results) merged.set(String(post.id), post);
   const data = [...merged.values()].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''));
   return { data, error: data.length ? null : lastError || publicPostsError };
 }
 
-function normalizeProfilePost(row, ownerId = '') {
+function normalizeProfilePost(row, ownerId = '', sb = null) {
   const media = row.media && typeof row.media === 'object' ? row.media : {};
-  const mediaItems = Array.isArray(row.media_items) ? row.media_items.filter(item => typeof item === 'string')
-    : Array.isArray(media.items) ? media.items.filter(item => typeof item === 'string') : [];
-  const previews = Array.isArray(row.media_preview_items) ? row.media_preview_items.filter(item => typeof item === 'string')
-    : Array.isArray(media.previewItems) ? media.previewItems.filter(item => typeof item === 'string') : [];
-  const mediaUrl = typeof row.media_url === 'string' && row.media_url ? row.media_url
-    : typeof media.url === 'string' && media.url ? media.url : mediaItems[0] || '';
-  const mediaTypeValue = row.media_type || media.type;
-  const mediaType = typeof mediaTypeValue === 'string' ? mediaTypeValue
-    : /\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i.test(mediaUrl) ? 'video' : mediaUrl ? 'image' : null;
+  const normalizeMediaPath = value => {
+    const path = profileText(value);
+    return sb ? portfolioMediaUrl(sb, { storage_path: path }) || path : path;
+  };
+  const mediaItems = (Array.isArray(row.media_items) ? row.media_items.filter(item => typeof item === 'string')
+    : Array.isArray(media.items) ? media.items.filter(item => typeof item === 'string') : []);
+  const previews = (Array.isArray(row.media_preview_items) ? row.media_preview_items.filter(item => typeof item === 'string')
+    : Array.isArray(media.previewItems) ? media.previewItems.filter(item => typeof item === 'string') : []);
+  const normalizedMediaItems = mediaItems.map(normalizeMediaPath);
+  const normalizedPreviews = previews.map(normalizeMediaPath);
+  const rowMediaUrl = profileText(row.media_url);
+  const objectMediaUrl = profileText(media.url);
+  const mediaUrl = (sb ? portfolioMediaUrl(sb, { ...row, media_url: rowMediaUrl || objectMediaUrl || normalizedMediaItems[0] || '' }) : '')
+    || rowMediaUrl || objectMediaUrl || normalizedMediaItems[0] || '';
+  const mediaTypeValue = profileText(row.media_type) || profileText(media.type);
+  const mediaType = mediaTypeValue
+    || (/\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i.test(mediaUrl) ? 'video' : mediaUrl ? 'image' : null);
   return {
     ...row,
     author_id: row.public_post ? '' : row.author_id || row.user_id || row.author?.id || row.authorId || ownerId,
@@ -389,8 +397,8 @@ function normalizeProfilePost(row, ownerId = '') {
     created_at: row.created_at || row.createdAt || '',
     media_url: mediaUrl,
     media_type: mediaType,
-    media_items: mediaItems,
-    media_preview_items: previews,
+    media_items: normalizedMediaItems,
+    media_preview_items: normalizedPreviews,
   };
 }
 
@@ -545,10 +553,14 @@ export class ProfileView {
       }
       if (token !== this.token || tab !== this.activeTab) return;
       if (!ids.length) { this.#renderGrid([], { message: tab === 'saved' ? t('noSaved') : t('empty') }); return; }
-      const { data, error } = await sb.from('mw_posts').select([...PROFILE_POST_REQUIRED, 'author_id'].join(',')).in('id', ids);
+      let result = await sb.from('mw_posts').select([...PROFILE_POST_REQUIRED, 'author_id', 'storage_path'].join(',')).in('id', ids);
+      if (result.error && missingProfileColumn(result.error, ['storage_path']) === 'storage_path') {
+        result = await sb.from('mw_posts').select([...PROFILE_POST_REQUIRED, 'author_id'].join(',')).in('id', ids);
+      }
+      const { data, error } = result;
       if (error) throw error;
       if (token !== this.token || tab !== this.activeTab) return;
-      const byId = new Map((Array.isArray(data) ? data : []).map(row => [String(row.id), normalizeProfilePost(row)]));
+      const byId = new Map((Array.isArray(data) ? data : []).map(row => [String(row.id), normalizeProfilePost(row, '', sb)]));
       const posts = ids.map(id => byId.get(id)).filter(Boolean).map(post => ({
         ...post,
         audience: this.postAudiences[post.id] || 'everyone',
@@ -949,11 +961,16 @@ export class ProfileView {
     profile = profile && typeof profile === 'object' ? profile : { id: this.id || auth.userId || '' };
     profile = {
       ...profile,
+      id: profileText(profile.id),
       name: profileText(profile.name) || 'MilkyWay',
       username: profileText(profile.username),
       role: profileText(profile.role),
       status: profileText(profile.status),
       bio: profileText(profile.bio),
+      avatar: profileText(profile.avatar),
+      cover: profileText(profile.cover),
+      private: profile.private === true || profile.private === 'true',
+      usernameUpdatedAt: profileText(profile.usernameUpdatedAt),
       interests: Array.isArray(profile.interests)
         ? profile.interests.map(profileText).filter(Boolean)
         : profileText(profile.interests),
