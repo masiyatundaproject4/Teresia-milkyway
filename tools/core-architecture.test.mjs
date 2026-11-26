@@ -13,6 +13,7 @@ import { postShareResponse } from '../api/_lib/post-share.js';
 import { assertRoomAccess } from '../milkyway/app/core/livekit-access.js';
 import { identifyMediaFile, mediaInfo, openFilePicker } from '../milkyway/app/core/media-files.js';
 import { checkDeployment } from '../milkyway/app/core/update-check.js';
+import { loadPublicPosts } from '../milkyway/app/data/public-posts.js';
 
 const A = '11111111-1111-4111-8111-111111111111'; // public author
 const B = '22222222-2222-4222-8222-222222222222'; // private author
@@ -1803,4 +1804,39 @@ test('production hardening scopes cleanup leases and uses short locale-aware lif
   assert.match(dom, /Intl\.RelativeTimeFormat/);
   assert.match(liveSession, /'like-status'/);
   assert.match(liveSession, /status\.isLive === false/);
+});
+
+test('public posts use the published schema without owner or publication filtering', async () => {
+  const rows = [
+    { id: 'draft', created_at: '2026-01-02T00:00:00Z', title: 'Draft', category: 'art', description: 'First', media_url: '', media_type: 'image', title_en: 'Draft EN', title_sw: '', description_en: '', description_sw: '', storage_path: 'uploads/draft.jpg', published: false },
+    { id: 'legacy', created_at: '2026-01-01T00:00:00Z', title: '', category: '', description: '', media_url: 'https://cdn.example.test/legacy.png', media_type: 'image', title_en: '', title_sw: 'Legacy', description_en: '', description_sw: '', storage_path: '', published: null },
+  ];
+  let selected = '';
+  let queriedTable = '';
+  let storagePath = '';
+  const sb = {
+    from(table) {
+      queriedTable = table;
+      return {
+        select(columns) { selected = columns; return this; },
+        order(column, options) { assert.equal(column, 'created_at'); assert.deepEqual(options, { ascending: false }); return this; },
+        limit(value) { assert.equal(value, 100); return Promise.resolve({ data: rows, error: null }); },
+      };
+    },
+    storage: {
+      from(bucket) {
+        assert.equal(bucket, 'portfolio');
+        return { getPublicUrl(path) { storagePath = path; return { data: { publicUrl: `https://storage.example.test/${path}` } }; } };
+      },
+    },
+  };
+  const posts = await loadPublicPosts(sb);
+  assert.equal(queriedTable, 'posts');
+  assert.equal(selected, 'id,created_at,title,category,description,media_url,media_type,title_en,title_sw,description_en,description_sw,storage_path,published');
+  assert.deepEqual(posts.map(post => post.published), [false, null]);
+  assert.equal(storagePath, 'uploads/draft.jpg');
+  assert.equal(posts[0].media_url, 'https://storage.example.test/uploads/draft.jpg');
+  assert.equal(posts[0].caption, 'Draft EN\nFirst');
+  assert.equal(posts[1].caption, 'Legacy');
+  assert.ok(posts.every(post => post.public_post && post.author_id === ''));
 });
