@@ -6,7 +6,8 @@ import { api, rest, auth, supabase } from '../core/net.js';
 import { bus } from '../core/events.js';
 import { inbox } from './chats.js';
 import { removeChatMedia, sendViewOnce, uploadChatMedia } from './chat-media.js';
-import { safePublicText } from './usernames.js';
+import { containsPrivateContact, safePublicText } from './usernames.js';
+import { profiles } from './profiles.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const listeners = new Set();
@@ -117,20 +118,28 @@ bus.on('auth', async () => {
 
 /** People search for starting a new conversation (name or @username). */
 export async function searchPeople(query) {
-  const q = String(query || '').trim().replace(/^@/, '').replace(/[%*,()"\\]/g, '').slice(0, 40);
+  const rawQuery = String(query || '').trim().replace(/^@/, '').replace(/\s+/g, ' ');
+  if (rawQuery.length < 2 || rawQuery.length > 80 || containsPrivateContact(rawQuery)) return [];
+  const q = rawQuery.replace(/[,()"\\]/g, '');
   if (q.length < 2) return [];
-  const pattern = encodeURIComponent(`*${q}*`);
-  const rows = await rest(`mw_profiles?select=id,display_name,username,avatar_url&or=(username.ilike.${pattern},display_name.ilike.${pattern})&limit=20`);
-  return (rows || []).filter(row => row && row.id != null
-    && !/^(?:null|undefined)$/i.test(String(row.id))
-    && String(row.id) !== auth.userId)
-    .map(row => {
-      const username = safePublicText(row.username).replace(/^@/, '').toLowerCase();
-      const name = safePublicText(row.display_name) || username || 'MilkyWay';
-      const avatar = typeof row.avatar_url === 'string'
-        && !/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(row.avatar_url)
-        && !/\b(?:null|undefined)\b/i.test(row.avatar_url)
-        ? row.avatar_url : '';
-      return { id: String(row.id), name, username, avatar };
+  const pattern = encodeURIComponent(`*${q.replace(/[\\%_]/g, '\\$&')}*`);
+  const rows = await rest(`mw_profiles?select=id,display_name,username,avatar_url&or=(username.ilike.${pattern},display_name.ilike.${pattern})&order=created_at.desc&limit=1000`);
+  const people = new Map();
+  for (const row of rows || []) {
+    if (!row || row.id == null || /^(?:null|undefined)$/i.test(String(row.id))
+      || String(row.id) === auth.userId) continue;
+    const person = {
+      id: String(row.id),
+      name: safePublicText(row.display_name) || safePublicText(row.username) || 'MilkyWay',
+      username: safePublicText(row.username).replace(/^@/, '').toLowerCase(),
+      avatar: safePublicText(row.avatar_url),
+    };
+    people.set(person.id, person);
+  }
+  for (const person of profiles.matching(q)) {
+    if (person.id !== auth.userId && !people.has(person.id)) people.set(person.id, {
+      id: person.id, name: person.name, username: person.username, avatar: person.avatar,
     });
+  }
+  return [...people.values()];
 }

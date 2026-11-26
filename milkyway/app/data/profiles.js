@@ -4,6 +4,7 @@ import { store } from '../core/store.js';
 import { rest, auth } from '../core/net.js';
 import { scoped } from '../core/sync.js';
 import { bus } from '../core/events.js';
+import { safePublicText } from './usernames.js';
 
 const memory = new Map();
 const following = new Set();
@@ -12,8 +13,9 @@ let followLoaded = false;
 let followingRefresh = null;
 
 const normalize = row => row && ({
-  id: String(row.id), name: row.name || row.display_name || 'MilkyWay',
-  username: row.username || '', avatar: row.avatar || row.avatar_url || '',
+  id: String(row.id), name: safePublicText(row.name || row.display_name) || safePublicText(row.username) || 'MilkyWay',
+  username: safePublicText(row.username).replace(/^@/, '').toLowerCase(),
+  avatar: safePublicText(row.avatar || row.avatar_url),
   private: row.private == null && row.is_private == null ? null : Boolean(row.private ?? row.is_private),
 });
 
@@ -37,6 +39,12 @@ export const profiles = {
     bus.emit('profile', profile);
   },
   peek: id => memory.get(String(id)) || null,
+  matching(query) {
+    const needle = safePublicText(query).replace(/^@/, '').toLocaleLowerCase();
+    if (needle.length < 2) return [];
+    return [...memory.values()].filter(profile =>
+      `${profile.name} ${profile.username}`.toLocaleLowerCase().includes(needle));
+  },
   /** Many at once: memory → device → one network request for the rest. */
   async many(ids) {
     const wanted = [...new Set(ids.map(String))];
@@ -44,7 +52,13 @@ export const profiles = {
     for (const id of wanted) {
       if (memory.has(id)) continue;
       const saved = await store.get(`profile:${id}`);
-      if (saved) memory.set(id, saved); else missing.push(id);
+      if (saved) {
+        const profile = normalize(saved);
+        if (profile?.id) {
+          memory.set(id, profile);
+          store.set(`profile:${id}`, profile);
+        } else missing.push(id);
+      } else missing.push(id);
     }
     if (missing.length) {
       try {

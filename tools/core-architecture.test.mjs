@@ -18,6 +18,29 @@ const A = '11111111-1111-4111-8111-111111111111'; // public author
 const B = '22222222-2222-4222-8222-222222222222'; // private author
 const P = n => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, '0')}`;
 
+test('people search prioritizes new profiles, separates unique handles from names, and excludes contact details', () => {
+  const search = readFileSync(new URL('../milkyway/app/data/messages.js', import.meta.url), 'utf8');
+  const profiles = readFileSync(new URL('../milkyway/app/data/profiles.js', import.meta.url), 'utf8');
+  const usernames = readFileSync(new URL('../milkyway/app/data/usernames.js', import.meta.url), 'utf8');
+  const auth = readFileSync(new URL('../milkyway/app/ui/auth-sheet.js', import.meta.url), 'utf8');
+  assert.match(search, /select=id,display_name,username,avatar_url&or=\(username\.ilike\.\$\{pattern\},display_name\.ilike\.\$\{pattern\}\)&order=created_at\.desc&limit=1000/);
+  assert.match(search, /containsPrivateContact\(rawQuery\)/);
+  assert.match(search, /name: safePublicText\(row\.display_name\)/);
+  assert.match(search, /username: safePublicText\(row\.username\)/);
+  assert.match(search, /profiles\.matching\(q\)/);
+  assert.doesNotMatch(search, /select=[^`]*(?:email|phone)/i);
+  assert.match(usernames, /PHONE_PATTERN/);
+  assert.match(usernames, /safePublicText\(value\)/);
+  assert.match(profiles, /matching\(query\)/);
+  assert.match(profiles, /normalize\(saved\)/);
+  assert.match(usernames, /requestedDisplayName = ''/);
+  assert.match(usernames, /safePublicText\(requestedDisplayName\)/);
+  assert.match(usernames, /usernameAvailable\(sb, requested, excludeId\)/);
+  assert.doesNotMatch(usernames, /usernameAvailable\(sb,\s*displayName/);
+  assert.match(auth, /requestedDisplayName: displayName\.value/);
+  assert.match(auth, /profiles\.update\(\{/);
+});
+
 test('group management schema and UI implement guarded joins, invitations and co-admin tools', () => {
   const migration = readFileSync(new URL('../supabase/migrations/20261207_milkyway_dm_group_management.sql', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/milkyway-groups.js', import.meta.url), 'utf8');

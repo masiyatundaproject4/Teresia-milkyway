@@ -406,6 +406,7 @@ async function syncPendingOAuthUsername() {
     const identity = await registrationIdentity(sb, {
       email: auth.user?.email || '',
       requestedUsername: pending.username,
+      requestedDisplayName: pending.displayName || auth.user?.user_metadata?.display_name || auth.user?.user_metadata?.full_name || '',
       excludeId: userId,
     });
     const { error } = await sb.from('mw_profiles').upsert(
@@ -419,6 +420,7 @@ async function syncPendingOAuthUsername() {
       { onConflict: 'id' },
     );
     if (error) throw error;
+    profiles.update({ id: userId, name: identity.displayName, username: identity.username, avatar: '' });
     if (localStorage.getItem(key) === raw) localStorage.removeItem(key);
   } catch (error) {
     console.error('[auth] Google sign-up username could not be saved', error);

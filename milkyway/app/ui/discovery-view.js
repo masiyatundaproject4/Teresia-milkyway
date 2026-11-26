@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { api } from '../core/net.js';
+import { bus } from '../core/events.js';
 import { t } from '../core/i18n.js';
 import { searchPeople } from '../data/messages.js';
 import { profiles } from '../data/profiles.js';
@@ -36,6 +37,9 @@ export class DiscoveryView {
     this.search.addEventListener('input', () => {
       clearTimeout(this.searchTimer);
       this.searchTimer = setTimeout(() => this.#render(), 200);
+    });
+    bus.on('online', () => {
+      if (!this.root.hidden && this.tab === 'people' && this.search.value.trim()) this.#render();
     });
   }
 

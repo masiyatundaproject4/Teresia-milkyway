@@ -4,6 +4,7 @@ import { supabase } from '../core/net.js';
 import { Sheet } from './sheet.js';
 import { h, icon, toast } from './dom.js';
 import { registrationIdentity } from '../data/usernames.js';
+import { profiles } from '../data/profiles.js';
 
 const PENDING_OAUTH_USERNAME = 'mw_pending_oauth_username';
 
@@ -51,6 +52,10 @@ export class AuthSheet {
       id: 'auth-username', class: 'field', type: 'text', autocomplete: 'username', autocapitalize: 'none',
       placeholder: t('usernameOptionalPlaceholder'), 'aria-label': t('username'), maxlength: 20,
     });
+    const displayName = h('input', {
+      id: 'auth-display-name', class: 'field', type: 'text', autocomplete: 'name',
+      placeholder: t('displayName'), 'aria-label': t('displayName'), maxlength: 80,
+    });
     const email = h('input', {
       id: 'auth-email', class: 'field', type: 'email', autocomplete: 'email', inputmode: 'email', autocapitalize: 'none',
       placeholder: t('emailPlaceholder'),
@@ -66,6 +71,8 @@ export class AuthSheet {
     });
     const usernameWrap = h('div', { class: 'auth-field-wrap', hidden: true },
       h('label', { class: 'auth-label', for: username.id }, t('username')), username);
+    const displayNameWrap = h('div', { class: 'auth-field-wrap', hidden: true },
+      h('label', { class: 'auth-label', for: displayName.id }, t('displayName')), displayName);
     const emailWrap = h('div', { class: 'auth-field-wrap' },
       h('label', { class: 'auth-label', for: email.id }, t('email')), email);
     const passwordWrap = h('div', { class: 'auth-field-wrap' },
@@ -121,8 +128,9 @@ export class AuthSheet {
           try {
             localStorage.setItem(PENDING_OAUTH_USERNAME, JSON.stringify({
               username: username.value.trim().toLowerCase(),
-              startedAt: Date.now(),
-            }));
+                    displayName: displayName.value.trim(),
+                    startedAt: Date.now(),
+                  }));
           } catch {
             message.textContent = 'Could not save your username for Google sign-up. Check your browser storage settings.';
             return;
@@ -170,6 +178,7 @@ export class AuthSheet {
       submit.textContent = creating ? t('createAccount') : t('signIn');
       switchMode.textContent = creating ? t('haveAccount') : t('createAccount');
       usernameWrap.hidden = !creating;
+      displayNameWrap.hidden = !creating;
       username.required = false;
       confirmationWrap.hidden = !creating;
       confirmation.required = creating;
@@ -217,10 +226,12 @@ export class AuthSheet {
         try {
           const sb = await supabase();
           let result;
+          let identity = null;
           if (mode === 'signup') {
-            const identity = await registrationIdentity(sb, {
+            identity = await registrationIdentity(sb, {
               email: email.value.trim(),
               requestedUsername: username.value,
+              requestedDisplayName: displayName.value,
             });
             result = await sb.auth.signUp({
               email: email.value.trim(),
@@ -239,8 +250,15 @@ export class AuthSheet {
           }
           const { data, error } = result;
           if (error) throw error;
+          if (mode === 'signup' && data.user?.id && identity) profiles.update({
+            id: data.user.id,
+            name: identity.displayName,
+            username: identity.username,
+            avatar: '',
+          });
           password.value = '';
           confirmation.value = '';
+          displayName.value = '';
           if (mode === 'signup' && !data.session) {
             message.textContent = t('confirmEmailSent');
             return;
@@ -260,6 +278,7 @@ export class AuthSheet {
       },
     },
     subtitle,
+    displayNameWrap,
     usernameWrap,
     emailWrap,
     passwordWrap,

@@ -3,14 +3,24 @@ import { t } from '../core/i18n.js';
 const RESERVED_USERNAMES = new Set([
   'admin', 'milkyway', 'nova', 'support', 'official', 'moderator', 'system', 'orbit',
 ]);
+const EMAIL_PATTERN = /[\w.+-]+@[\w.-]+\.[a-z]{2,}/i;
+const PHONE_PATTERN = /(^|[^\p{L}\p{N}])(\+?\d[\d\s().-]{5,}\d)(?=$|[^\p{L}\p{N}])/gu;
 
 export const USERNAME_COOLDOWN_MS = 72 * 60 * 60 * 1000;
 const USERNAME_PATTERN = /^[a-z0-9_](?:[a-z0-9._]{1,18}[a-z0-9_])$/;
 
+export function containsPrivateContact(value) {
+  const text = String(value || '');
+  if (EMAIL_PATTERN.test(text)) return true;
+  return [...text.matchAll(new RegExp(PHONE_PATTERN))].some(([, , phone]) => phone.replace(/\D/g, '').length >= 7);
+}
+
 export function safePublicText(value) {
   if (typeof value !== 'string') return '';
   return value
-    .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, '')
+    .replace(EMAIL_PATTERN, '')
+    .replace(PHONE_PATTERN, (match, prefix, phone) =>
+      phone.replace(/\D/g, '').length >= 7 ? `${prefix} ` : match)
     .replace(/\b(?:null|undefined)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -75,8 +85,8 @@ export async function uniqueUsername(sb, source, { email = '', excludeId = '' } 
   throw new Error(t('usernameGenerationFailed'));
 }
 
-export async function registrationIdentity(sb, { email, requestedUsername = '', excludeId = '' }) {
-  const displayName = displayNameFromEmail(email);
+export async function registrationIdentity(sb, { email, requestedUsername = '', requestedDisplayName = '', excludeId = '' }) {
+  const displayName = safePublicText(requestedDisplayName).slice(0, 80) || displayNameFromEmail(email);
   const requested = String(requestedUsername || '').trim().replace(/^@/, '').toLowerCase();
   const customIsValid = validUsername(requested);
   if (customIsValid && await usernameAvailable(sb, requested, excludeId)) {

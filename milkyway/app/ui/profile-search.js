@@ -1,4 +1,5 @@
 import { t } from '../core/i18n.js';
+import { bus } from '../core/events.js';
 import { profiles } from '../data/profiles.js';
 import { searchPeople } from '../data/messages.js';
 import { Sheet } from './sheet.js';
@@ -17,6 +18,9 @@ export class ProfileSearch {
     this.input.addEventListener('input', () => {
       clearTimeout(this.timer);
       this.timer = setTimeout(() => this.#search(), 250);
+    });
+    bus.on('online', () => {
+      if (this.sheet.isOpen && this.input.value.trim()) this.#search();
     });
   }
 
