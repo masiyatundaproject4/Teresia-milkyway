@@ -12,20 +12,37 @@ const requested = new Set();
 let followLoaded = false;
 let followingRefresh = null;
 
-const normalize = row => row && ({
-  id: String(row.id), name: safePublicText(row.name || row.full_name || row.display_name) || safePublicText(row.username) || 'MilkyWay',
-  username: safePublicText(row.username).replace(/^@/, '').toLowerCase(),
-  avatar: safePublicText(row.avatar || row.avatar_url),
-  private: row.private == null && row.is_private == null ? null : Boolean(row.private ?? row.is_private),
-});
+const normalize = row => {
+  if (!row || row.id == null) return null;
+  const id = String(row.id).trim();
+  if (!id || /^(?:null|undefined)$/i.test(id)) return null;
+  const username = safePublicText(row.username).replace(/^@/, '').toLowerCase();
+  return {
+    id,
+    name: safePublicText(row.name) || safePublicText(row.full_name) || safePublicText(row.display_name) || username || 'MilkyWay',
+    username,
+    avatar: safePublicText(row.avatar) || safePublicText(row.avatar_url),
+    private: row.private == null && row.is_private == null ? null : Boolean(row.private ?? row.is_private),
+  };
+};
 
 export const profiles = {
   /** Seed from data that already arrived with a feed page / Live list (no extra request). */
   prime(list) {
     for (const item of list || []) {
-      const profile = normalize(item);
-      if (!profile?.id) continue;
-      const before = memory.get(profile.id);
+      const incoming = normalize(item);
+      if (!incoming) continue;
+      const before = memory.get(incoming.id);
+      const hasName = safePublicText(item.name) || safePublicText(item.full_name) || safePublicText(item.display_name);
+      const hasUsername = safePublicText(item.username);
+      const hasAvatar = safePublicText(item.avatar) || safePublicText(item.avatar_url);
+      const profile = {
+        ...incoming,
+        name: hasName || before?.name || incoming.name,
+        username: hasUsername ? incoming.username : before?.username || incoming.username,
+        avatar: hasAvatar || before?.avatar || incoming.avatar,
+        private: incoming.private == null ? before?.private ?? null : incoming.private,
+      };
       memory.set(profile.id, profile);
       if (!before || before.avatar !== profile.avatar || before.name !== profile.name
         || before.username !== profile.username || before.private !== profile.private) store.set(`profile:${profile.id}`, profile);

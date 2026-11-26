@@ -36,6 +36,9 @@ test('people search prioritizes new profiles, separates unique handles from name
   assert.match(usernames, /safePublicText\(value\)/);
   assert.match(profiles, /matching\(query\)/);
   assert.match(profiles, /normalize\(saved\)/);
+  assert.match(profiles, /if \(!row \|\| row\.id == null\) return null/);
+  assert.match(profiles, /private: incoming\.private == null \? before\?\.private \?\? null : incoming\.private/);
+  assert.match(profiles, /avatar: hasAvatar \|\| before\?\.avatar \|\| incoming\.avatar/);
   assert.match(usernames, /requestedDisplayName = ''/);
   assert.match(usernames, /safePublicText\(requestedDisplayName\)/);
   assert.match(usernames, /usernameAvailable\(sb, requested, excludeId\)/);
@@ -803,6 +806,9 @@ test('profile post queries reconcile owner columns and cached posts while normal
   assert.match(profile, /\[\.\.\.PROFILE_POST_REQUIRED, 'author_id'\]\.join\(','\)/);
   assert.match(profile, /postsError \|\| t\('retry'\)/);
   assert.match(profile, /profileText\(row\.role \|\| row\.status\)/);
+  assert.match(profile, /tab === 'private' && this\.audienceLoadError/);
+  assert.match(profile, /from\('mw_post_audience'\)\.select\('post_id,audience'\)/);
+  assert.match(profile, /post audiences could not be loaded through the API or direct query/);
 });
 
 test('Nova profile toolbar opens Suggested Friends and Notifications with profile-specific sharing', () => {
