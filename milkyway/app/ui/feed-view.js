@@ -123,7 +123,7 @@ export class FeedView {
 
   #trackView(post) {
     const viewerId = auth.userId;
-    if (!viewerId || !post?.id || post.kind) return;
+    if (!viewerId || !post?.id || post.kind || post.public_post) return;
     const key = `${viewerId}:${post.id}`;
     this.viewedPosts ||= new Set();
     if (this.viewedPosts.has(key)) return;
@@ -212,7 +212,7 @@ export class FeedView {
     for (const type of ['loadedmetadata', 'durationchange', 'timeupdate', 'seeked']) video.addEventListener(type, updateSeek);
     // Sponsored label + call to action (ads) and the "Suggested for you" card; hidden on normal posts.
     const adBar = h('div', { class: 'ad-bar', hidden: true },
-      h('div', { class: 'ad-line' }, h('span', { class: 'ad-tag' }, t('sponsored') === 'sponsored' ? 'Sponsored' : t('sponsored')),
+      h('div', { class: 'ad-line' }, h('span', { class: 'ad-tag' }, t('sponsored') || 'Sponsored'),
         h('button', { class: 'ad-hide', type: 'button', 'data-act': 'ad-hide', 'aria-label': 'Not interested' }, '✕')),
       h('button', { class: 'ad-cta', type: 'button', 'data-act': 'ad-cta' }, ''));
     const suggest = h('div', { class: 'suggest-card', hidden: true });
@@ -334,6 +334,7 @@ export class FeedView {
     if (post.kind) slide.dataset.kind = post.kind; else delete slide.dataset.kind;
     r.adBar.hidden = post.kind !== 'ad';
     r.suggest.hidden = post.kind !== 'suggest';
+    for (const action of [r.like, r.comment, r.save, r.gift, r.share, r.follow]) action.hidden = Boolean(post.public_post);
     r.video.hidden = type !== 'video';
     r.img.hidden = type !== 'image';
     r.text.hidden = type !== 'text';
@@ -377,7 +378,7 @@ export class FeedView {
     if (post.kind === 'ad') {
       r.name.textContent = displayText(post.ad.business) || displayText(post.ad.title);
       r.caption.textContent = [post.ad.title && post.ad.business ? displayText(post.ad.title) : '', displayText(post.ad.description)].filter(Boolean).join(' — ');
-      r.adBar.querySelector('.ad-cta').textContent = `${displayText(post.ad.ctaLabel) || (t('learnMore') === 'learnMore' ? 'Learn more' : t('learnMore'))} ›`;
+      r.adBar.querySelector('.ad-cta').textContent = `${displayText(post.ad.ctaLabel) || t('learnMore') || 'Learn more'} ›`;
       r.adBar.querySelector('.ad-cta').hidden = !post.ad.destination;
     }
     if (post.kind === 'suggest') { r.name.textContent = ''; r.caption.textContent = ''; this.#paintSuggest(slide); }
@@ -385,7 +386,7 @@ export class FeedView {
 
   #paintSuggest(slide) {
     const people = this.promo.people.filter(person => !profiles.isFollowing(person.id) && !profiles.isRequested(person.id)).slice(0, 6);
-    const title = t('suggestedForYou') === 'suggestedForYou' ? 'Suggested for you' : t('suggestedForYou');
+    const title = t('suggestedForYou') || 'Suggested for you';
     slide._refs.suggest.replaceChildren(h('b', { class: 'suggest-title' }, title),
       people.length ? h('div', { class: 'suggest-grid' }, ...people.map(person => h('div', { class: 'suggest-person' },
         h('button', { class: 'suggest-face', type: 'button', 'data-act': 'suggest-profile', 'data-uid': person.id }, avatar(person, 64)),
@@ -418,6 +419,7 @@ export class FeedView {
   #paintFollow(slide, post) {
     if (!post) return;
     if (post.kind) { slide._refs.follow.hidden = true; return; }
+    if (post.public_post) { slide._refs.follow.hidden = true; return; }
     const own = post.author.id === auth.userId;
     slide._refs.follow.hidden = own || profiles.isFollowing(post.author.id) || profiles.isRequested(post.author.id);
   }
@@ -458,6 +460,13 @@ export class FeedView {
       const post = slide?._post;
       if (!target || !post) return;
       const act = target.dataset.act;
+      if (post.public_post) {
+        if (act === 'media') {
+          if (mediaKind(post) === 'video') this.#tap(slide);
+          else this.hooks.openPost?.(post);
+        }
+        return;
+      }
       if (post.kind) {
         if (act === 'ad-cta' || (act === 'media' && post.kind === 'ad' && mediaKind(post) !== 'video' && post.ad.destination)) {
           event.stopPropagation();

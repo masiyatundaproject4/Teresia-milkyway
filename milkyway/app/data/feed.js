@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { api, rest, auth, supabase } from '../core/net.js';
 import { resource, perform, registerOp } from '../core/sync.js';
 import { profiles } from './profiles.js';
+import { loadPublicPosts } from './public-posts.js';
 import { t } from '../core/i18n.js';
 import { toast } from '../ui/dom.js';
 
@@ -15,7 +16,16 @@ const pageUrl = (scope, before) => {
 
 async function fetchPage(scope, before) {
   const page = await api(pageUrl(scope, before), { timeout: 9000 });
-  const posts = Array.isArray(page?.posts) ? page.posts : [];
+  let posts = Array.isArray(page?.posts) ? page.posts : [];
+  if (scope === 'foryou' && !before) {
+    try {
+      const sb = await supabase();
+      const publicPosts = await loadPublicPosts(sb);
+      posts = [...posts, ...publicPosts].sort((a, b) => Date.parse(b.createdAt || b.created_at || '') - Date.parse(a.createdAt || a.created_at || ''));
+    } catch (error) {
+      console.warn('[feed] public posts could not be loaded.', error);
+    }
+  }
   profiles.prime(posts.map(post => post.author));
   return { posts, next: page?.next || null };
 }

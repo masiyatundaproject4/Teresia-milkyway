@@ -3,6 +3,9 @@ import { lang, t } from '../core/i18n.js';
 import { setImage } from '../core/media.js';
 
 export const $ = (selector, root = document) => root.querySelector(selector);
+const displayText = value => typeof value === 'string'
+  ? value.replace(/\b(?:null|undefined)\b/gi, '').replace(/\s{2,}/g, ' ').trim()
+  : value;
 
 /** h('button', { class: 'x', onclick }, 'text', child) */
 export function h(tag, attrs = {}, ...children) {
@@ -13,9 +16,14 @@ export function h(tag, attrs = {}, ...children) {
     else if (key === 'html') node.innerHTML = value;
     else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2), value);
     else if (key === 'dataset') Object.assign(node.dataset, value);
-    else node.setAttribute(key, value === true ? '' : value);
+    else node.setAttribute(key, value === true ? '' : typeof value === 'string' ? displayText(value) : value);
   }
-  for (const child of children.flat()) if (child != null && child !== false) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  for (const child of children.flat()) {
+    if (child == null || child === false) continue;
+    const text = child instanceof Node ? null : displayText(String(child));
+    if (child instanceof Node) node.append(child);
+    else if (text) node.append(document.createTextNode(text));
+  }
   return node;
 }
 

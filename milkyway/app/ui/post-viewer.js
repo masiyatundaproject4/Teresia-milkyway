@@ -233,6 +233,10 @@ export class PostViewer {
     this.caption.hidden = !this.caption.textContent;
     const created = post.created_at || post.createdAt;
     this.when.textContent = created ? ago(created) : '';
+    this.likeBtn.hidden = Boolean(post.public_post);
+    this.commentBtn.hidden = Boolean(post.public_post);
+    this.shareBtn.hidden = Boolean(post.public_post);
+    this.deleteBtn.hidden = Boolean(post.public_post);
     this.prevBtn.hidden = index <= 0;
     this.nextBtn.hidden = index >= this.posts.length - 1;
     const authorId = String(post.author_id || post.author?.id || (this.own ? auth.userId : ''));
@@ -403,7 +407,7 @@ export class PostViewer {
   }
 
   async #loadCounts(post) {
-    if (post._counted) return;
+    if (post.public_post || post._counted) return;
     try {
       const sb = await supabase();
       const head = { count: 'exact', head: true };
@@ -427,7 +431,7 @@ export class PostViewer {
 
   #like() {
     const post = this.post;
-    if (!post || !this.hooks.requireLogin?.()) return;
+    if (!post || post.public_post || !this.hooks.requireLogin?.()) return;
     const feedPost = this.#feedShape();
     const on = !feedPost.liked;
     post.liked = on;

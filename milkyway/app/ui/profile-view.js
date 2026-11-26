@@ -7,6 +7,7 @@ import { identifyMediaFile, openFilePicker } from '../core/media-files.js';
 import { optimizeImage } from '../core/media-optimizer.js';
 import { setImage, poster } from '../core/media.js';
 import { profiles } from '../data/profiles.js';
+import { loadPublicPosts } from '../data/public-posts.js';
 import { actions, feed } from '../data/feed.js';
 import { Sheet } from './sheet.js';
 import { h, icon, avatar, count, toast } from './dom.js';
@@ -303,7 +304,9 @@ function cachedProfilePosts(id, username) {
     const posts = feed(scope).source.value?.posts;
     return Array.isArray(posts) ? posts : [];
   });
-  return cached.filter(post => post?.id && profileOwnsPost(post, id, username)).map(post => normalizeProfilePost(post, id));
+  return cached.filter(post => post?.id && (profileOwnsPost(post, id, username)
+    || (post.public_post === true && String(id) === String(auth.userId || ''))))
+    .map(post => normalizeProfilePost(post, id));
 }
 
 async function loadProfilePosts(sb, id, username = '') {
@@ -334,6 +337,13 @@ async function loadProfilePosts(sb, id, username = '') {
       availableOptional.splice(availableOptional.indexOf(missing), 1);
     }
   }
+  if (String(id) === String(auth.userId || '')) {
+    try {
+      results.push(...await loadPublicPosts(sb));
+    } catch (error) {
+      console.warn('[profile] public posts could not be loaded.', error);
+    }
+  }
   const merged = new Map(cachedProfilePosts(id, username).map(post => [String(post.id), post]));
   for (const post of results) merged.set(String(post.id), post);
   const data = [...merged.values()].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || '')).slice(0, 100);
@@ -353,7 +363,7 @@ function normalizeProfilePost(row, ownerId = '') {
     : /\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i.test(mediaUrl) ? 'video' : mediaUrl ? 'image' : null;
   return {
     ...row,
-    author_id: row.author_id || row.user_id || row.author?.id || row.authorId || ownerId,
+    author_id: row.public_post ? '' : row.author_id || row.user_id || row.author?.id || row.authorId || ownerId,
     username: row.username || row.author_username || row.author?.username || '',
     created_at: row.created_at || row.createdAt || '',
     media_url: mediaUrl,
@@ -808,15 +818,16 @@ export class ProfileView {
       const profilePosts = Array.isArray(posts.data) ? posts.data : [];
       if (pin?.post_id) profilePosts.sort((a, b) => Number(b.id === pin.post_id) - Number(a.id === pin.post_id));
       let audienceMap = {};
-      if (this.own && profilePosts.length) {
+      const ownedPosts = profilePosts.filter(post => !post.public_post);
+      if (this.own && ownedPosts.length) {
         try {
-          const result = await api(`/api/milkyway-gallery?action=audiences&ids=${profilePosts.map(post => encodeURIComponent(post.id)).join(',')}`, { timeout: 12000 });
+          const result = await api(`/api/milkyway-gallery?action=audiences&ids=${ownedPosts.map(post => encodeURIComponent(post.id)).join(',')}`, { timeout: 12000 });
           if (!result?.own || typeof result.own !== 'object') throw new Error(t('retry'));
           audienceMap = result.own;
         } catch (apiError) {
           try {
             const result = await sb.from('mw_post_audience').select('post_id,audience')
-              .eq('owner_id', id).in('post_id', profilePosts.map(post => post.id));
+              .eq('owner_id', id).in('post_id', ownedPosts.map(post => post.id));
             if (result.error) throw result.error;
             audienceMap = Object.fromEntries((result.data || []).map(item => [String(item.post_id), item.audience]));
           } catch (fallbackError) {
@@ -828,7 +839,7 @@ export class ProfileView {
       this.postAudiences = audienceMap;
       const postsWithAudience = profilePosts.map(post => ({
         ...post,
-        audience: this.own ? audienceMap[post.id] || 'everyone' : 'everyone',
+        audience: post.public_post ? 'everyone' : this.own ? audienceMap[post.id] || 'everyone' : 'everyone',
       }));
       const followingIds = new Set((followingRows.data || []).map(item => String(item.following_id)));
       const friends = (followerRows.data || []).reduce((total, item) => total + Number(followingIds.has(String(item.follower_id))), 0);
@@ -1344,7 +1355,7 @@ function tile(post, { open, menu }) {
     node.append(h('span', { class: 'mw-profile-scheduled' }, t('studioScheduled')));
   }
   if (menu) {
-    node.append(h('button', { class: 'tile-more', type: 'button', 'aria-label': t('postOptions'), onclick: event => { event.stopPropagation(); menu(); } }, '⋯'));
+    if (!post.public_post) node.append(h('button', { class: 'tile-more', type: 'button', 'aria-label': t('postOptions'), onclick: event => { event.stopPropagation(); menu(); } }, '⋯'));
   }
   node.addEventListener('click', open);
   node.addEventListener('keydown', event => {

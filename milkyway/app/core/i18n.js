@@ -579,7 +579,7 @@ const language = (() => {
 })();
 const table = strings[language] || strings.en;
 export const lang = strings[language] ? language : 'en';
-export const t = key => table[key] ?? strings.en[key] ?? key;
+export const t = key => table[key] ?? strings.en[key] ?? '';
 
 /** Saves the choice (shared with the other MilkyWay pages through "mw_lang") and reloads the app in that language. */
 export function setLanguage(code) {
