@@ -1856,11 +1856,13 @@ test('public posts use the published schema without owner or publication filteri
   assert.equal(posts[0].caption, 'Draft EN\nFirst');
   assert.equal(posts[1].caption, 'Legacy');
   assert.ok(posts.every(post => post.public_post && post.author_id === ''));
+  assert.ok(posts.every(post => post.audience === 'everyone'));
 });
 
 test('Nova profile merges public Orbit posts into the grid and counter data', () => {
   const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
   const publicPosts = readFileSync(new URL('../milkyway/app/data/public-posts.js', import.meta.url), 'utf8');
+  const connections = readFileSync(new URL('../milkyway/app/ui/followers-view.js', import.meta.url), 'utf8');
 
   assert.match(profile, /String\(id\) === String\(auth\.userId \|\| ''\)/);
   assert.match(profile, /results\.push\(\.\.\.await loadPublicPosts\(sb\)\)/);
@@ -1869,8 +1871,16 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.match(profile, /cachedProfilePosts\(id, username\)/);
   assert.match(profile, /this\.posts = Array\.isArray\(posts\) \? posts\.filter/);
   assert.match(profile, /count\(this\.posts\.length\)/);
+  assert.match(profile, /audience: row\.public_post \? 'everyone' : row\.audience/);
   assert.match(profile, /\^\(\?:null\|undefined\)\$/i);
-  assert.match(publicPosts, /select\(PUBLIC_POST_COLUMNS\)/);
+  assert.match(publicPosts, /select\(columns\)/);
+  assert.match(publicPosts, /'id', 'created_at', 'title', 'category', 'description', 'media_url', 'media_type'/);
   assert.doesNotMatch(publicPosts, /\.eq\(['"](?:user_id|author_id)['"]/);
   assert.doesNotMatch(publicPosts, /\.eq\(['"]published['"]/);
+  assert.match(publicPosts, /PUBLIC_POST_OPTIONAL_COLUMNS/);
+  assert.match(profile, /name: profileText\(profile\.name\)/);
+  assert.match(profile, /bio: profileText\(profile\.bio\)/);
+  assert.match(connections, /for \(const id of ids\) \{\s*if \(peopleById\.has\(id\)\) continue;/);
+  assert.match(connections, /name: 'MilkyWay',\s*username: '',\s*avatar: '',\s*private: null/);
+  assert.match(connections, /showing available follower entries/);
 });

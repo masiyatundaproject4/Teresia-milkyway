@@ -210,10 +210,21 @@ export class FollowersView {
       const { data: rows, error } = ids.length
         ? await sb.from('mw_profiles').select('id,display_name,username,avatar_url,is_private').in('id', ids)
         : { data: [], error: null };
-      if (error) throw error;
+      if (error) console.warn('[connections] Could not load profile details; showing available follower entries.', error);
       const peopleById = new Map((rows || []).map(row => [String(row.id), safePerson(row)]));
+      for (const id of ids) {
+        if (peopleById.has(id)) continue;
+        const cachedProfile = profiles.peek(id);
+        peopleById.set(id, cachedProfile || {
+          id,
+          name: 'MilkyWay',
+          username: '',
+          avatar: '',
+          private: null,
+        });
+      }
       this.peopleById = peopleById;
-      const people = ids.map(id => peopleById.get(id) || profiles.peek(id)).filter(Boolean);
+      const people = ids.map(id => peopleById.get(id)).filter(Boolean);
       profiles.prime(people);
 
       const liveResult = ids.length

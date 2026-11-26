@@ -1,7 +1,8 @@
 const PUBLIC_POST_COLUMNS = [
   'id', 'created_at', 'title', 'category', 'description', 'media_url', 'media_type',
-  'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published', 'extra_info',
+  'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published',
 ].join(',');
+const PUBLIC_POST_OPTIONAL_COLUMNS = ['extra_info'];
 
 const text = value => {
   if (typeof value !== 'string') return '';
@@ -26,11 +27,26 @@ function publicMediaUrl(sb, row) {
 }
 
 export async function loadPublicPosts(sb) {
-  const { data, error } = await sb.from('posts')
-    .select(PUBLIC_POST_COLUMNS)
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (error) throw error;
+  let fields = [...PUBLIC_POST_OPTIONAL_COLUMNS];
+  let data;
+  while (true) {
+    const columns = [...PUBLIC_POST_COLUMNS, ...fields].join(',');
+    const result = await sb.from('posts')
+      .select(columns)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (!result.error) {
+      data = result.data;
+      break;
+    }
+    const missingOptional = fields.find(column => {
+      const message = String(result.error?.message || '');
+      return /schema cache|column .* does not exist|could not find the .*column/i.test(message)
+        && new RegExp(`\\b${column}\\b`, 'i').test(message);
+    });
+    if (!missingOptional) throw result.error;
+    fields = fields.filter(column => column !== missingOptional);
+  }
 
   return (Array.isArray(data) ? data : []).filter(row => row && row.id != null && !/^(?:null|undefined)$/i.test(String(row.id).trim())).map(row => {
     const url = publicMediaUrl(sb, row);
@@ -46,6 +62,7 @@ export async function loadPublicPosts(sb) {
       author_id: '',
       author_name: 'MilkyWay',
       author: { id: '', name: 'MilkyWay', username: '', avatar: '' },
+      audience: 'everyone',
       title,
       description,
       caption: [title, description].filter(Boolean).join('\n'),

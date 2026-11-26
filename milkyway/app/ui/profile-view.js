@@ -375,6 +375,7 @@ function normalizeProfilePost(row, ownerId = '') {
   return {
     ...row,
     author_id: row.public_post ? '' : row.author_id || row.user_id || row.author?.id || row.authorId || ownerId,
+    audience: row.public_post ? 'everyone' : row.audience,
     username: row.username || row.author_username || row.author?.username || '',
     created_at: row.created_at || row.createdAt || '',
     media_url: mediaUrl,
@@ -939,6 +940,17 @@ export class ProfileView {
 
   #render({ profile, followers = 0, following = 0, friends = 0, requests = 0, posts = [], loading = false, error = false, postsError = '' }) {
     profile = profile && typeof profile === 'object' ? profile : { id: this.id || auth.userId || '' };
+    profile = {
+      ...profile,
+      name: profileText(profile.name),
+      username: profileText(profile.username),
+      role: profileText(profile.role),
+      status: profileText(profile.status),
+      bio: profileText(profile.bio),
+      interests: Array.isArray(profile.interests)
+        ? profile.interests.map(profileText).filter(Boolean)
+        : profileText(profile.interests),
+    };
     this.profile = profile;
     this.content.classList.toggle('has-cover-shortcut', this.own);
     this.profilePrivate = Boolean(profile.private);
