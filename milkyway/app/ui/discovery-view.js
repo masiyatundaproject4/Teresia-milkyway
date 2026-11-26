@@ -39,7 +39,11 @@ export class DiscoveryView {
       this.searchTimer = setTimeout(() => this.#render(), 200);
     });
     bus.on('online', () => {
-      if (!this.root.hidden && this.tab === 'people' && this.search.value.trim()) this.#render();
+      if (this.root.hidden) return;
+      if (this.tab === 'people') this.#render();
+      else searchPeople('', { recent: true })
+        .then(people => profiles.prime(people))
+        .catch(error => console.warn('[explore] recent people refresh failed', error));
     });
   }
 
@@ -50,6 +54,9 @@ export class DiscoveryView {
     this.#selectTab();
     this.#render();
     this.#load();
+    searchPeople('', { recent: true })
+      .then(people => profiles.prime(people))
+      .catch(error => console.warn('[explore] recent people could not be loaded', error));
   }
 
   async #load() {
@@ -129,13 +136,9 @@ export class DiscoveryView {
   }
 
   #renderPeople(query) {
-    if (query.length < 2) {
-      this.results.append(h('p', { class: 'muted center explore-message' }, t('explorePeopleHint')));
-      return;
-    }
     const request = this.peopleRequest = (this.peopleRequest || 0) + 1;
     this.results.append(h('p', { class: 'muted center explore-message' }, t('loading')));
-    searchPeople(query).then(people => {
+    searchPeople(query, { recent: query.length < 2 }).then(people => {
       if (request !== this.peopleRequest || this.tab !== 'people') return;
       profiles.prime(people);
       this.results.replaceChildren(...(people.length

@@ -19,9 +19,7 @@ export class ProfileSearch {
       clearTimeout(this.timer);
       this.timer = setTimeout(() => this.#search(), 250);
     });
-    bus.on('online', () => {
-      if (this.sheet.isOpen && this.input.value.trim()) this.#search();
-    });
+    bus.on('online', () => { if (this.sheet.isOpen) this.#search(!this.input.value.trim()); });
   }
 
   open() {
@@ -30,19 +28,20 @@ export class ProfileSearch {
     this.input.value = '';
     this.results.replaceChildren();
     this.sheet.open();
+    void this.#search(true);
     setTimeout(() => this.input.focus({ preventScroll: true }), 230);
   }
 
-  async #search() {
+  async #search(recent = false) {
     const query = this.input.value.trim();
     const token = this.request = (this.request || 0) + 1;
-    if (query.replace(/^@/, '').length < 2) {
+    if (!recent && query.replace(/^@/, '').length < 2) {
       this.results.replaceChildren();
       return;
     }
     this.results.replaceChildren(h('p', { class: 'muted center' }, t('loading')));
     try {
-      const people = await searchPeople(query);
+      const people = await searchPeople(query, { recent });
       if (token !== this.request) return;
       profiles.prime(people);
       this.results.replaceChildren(...(people.length

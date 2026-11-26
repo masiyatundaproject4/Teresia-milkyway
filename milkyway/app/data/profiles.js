@@ -13,7 +13,7 @@ let followLoaded = false;
 let followingRefresh = null;
 
 const normalize = row => row && ({
-  id: String(row.id), name: safePublicText(row.name || row.display_name) || safePublicText(row.username) || 'MilkyWay',
+  id: String(row.id), name: safePublicText(row.name || row.full_name || row.display_name) || safePublicText(row.username) || 'MilkyWay',
   username: safePublicText(row.username).replace(/^@/, '').toLowerCase(),
   avatar: safePublicText(row.avatar || row.avatar_url),
   private: row.private == null && row.is_private == null ? null : Boolean(row.private ?? row.is_private),

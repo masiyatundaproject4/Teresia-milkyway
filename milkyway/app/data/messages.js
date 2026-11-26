@@ -117,20 +117,27 @@ bus.on('auth', async () => {
 });
 
 /** People search for starting a new conversation (name or @username). */
-export async function searchPeople(query) {
+export async function searchPeople(query, { recent = false } = {}) {
   const rawQuery = String(query || '').trim().replace(/^@/, '').replace(/\s+/g, ' ');
-  if (rawQuery.length < 2 || rawQuery.length > 80 || containsPrivateContact(rawQuery)) return [];
-  const q = rawQuery.replace(/[,()"\\]/g, '');
-  if (q.length < 2) return [];
-  const pattern = encodeURIComponent(`*${q.replace(/[\\%_]/g, '\\$&')}*`);
-  const rows = await rest(`mw_profiles?select=id,display_name,username,avatar_url&or=(username.ilike.${pattern},display_name.ilike.${pattern})&order=created_at.desc&limit=1000`);
+  if ((!recent && rawQuery.length < 2) || rawQuery.length > 80 || containsPrivateContact(rawQuery)) return [];
+  const q = rawQuery.replace(/[,()"\\]/g, '').trim();
+  if (!recent && q.length < 2) return [];
+  const sb = await supabase();
+  let request = sb.from('mw_profiles').select('id,display_name,username,avatar_url,bio');
+  if (q.length >= 2) {
+    const pattern = `*${q.replace(/[%_*\\]/g, '\\$&')}*`;
+    request = request.or(`username.ilike.${pattern},display_name.ilike.${pattern}`);
+  }
+  const { data: rows, error } = await request.order('created_at', { ascending: false }).limit(100);
+  if (error) throw error;
+  profiles.prime(rows || []);
   const people = new Map();
   for (const row of rows || []) {
     if (!row || row.id == null || /^(?:null|undefined)$/i.test(String(row.id))
       || String(row.id) === auth.userId) continue;
     const person = {
       id: String(row.id),
-      name: safePublicText(row.display_name) || safePublicText(row.username) || 'MilkyWay',
+      name: safePublicText(row.full_name || row.display_name) || safePublicText(row.username) || 'MilkyWay',
       username: safePublicText(row.username).replace(/^@/, '').toLowerCase(),
       avatar: safePublicText(row.avatar_url),
     };
