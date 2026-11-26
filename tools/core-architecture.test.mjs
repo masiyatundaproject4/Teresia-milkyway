@@ -23,12 +23,15 @@ test('people search prioritizes new profiles, separates unique handles from name
   const profiles = readFileSync(new URL('../milkyway/app/data/profiles.js', import.meta.url), 'utf8');
   const usernames = readFileSync(new URL('../milkyway/app/data/usernames.js', import.meta.url), 'utf8');
   const auth = readFileSync(new URL('../milkyway/app/ui/auth-sheet.js', import.meta.url), 'utf8');
-  assert.match(search, /select=id,display_name,username,avatar_url&or=\(username\.ilike\.\$\{pattern\},display_name\.ilike\.\$\{pattern\}\)&order=created_at\.desc&limit=1000/);
+  assert.match(search, /from\('mw_profiles'\)\.select\('id,display_name,username,avatar_url,bio'\)/);
+  assert.match(search, /username\.ilike\.\$\{pattern\},display_name\.ilike\.\$\{pattern\}/);
+  assert.match(search, /order\('created_at', \{ ascending: false \}\)\.limit\(100\)/);
   assert.match(search, /containsPrivateContact\(rawQuery\)/);
-  assert.match(search, /name: safePublicText\(row\.display_name\)/);
+  assert.match(search, /name: safePublicText\(row\.full_name \|\| row\.display_name\)/);
   assert.match(search, /username: safePublicText\(row\.username\)/);
   assert.match(search, /profiles\.matching\(q\)/);
-  assert.doesNotMatch(search, /select=[^`]*(?:email|phone)/i);
+  assert.match(search, /profiles\.prime\(rows \|\| \[\]\)/);
+  assert.doesNotMatch(search, /select\(['"][^'"]*(?:email|phone)/i);
   assert.match(usernames, /PHONE_PATTERN/);
   assert.match(usernames, /safePublicText\(value\)/);
   assert.match(profiles, /matching\(query\)/);
@@ -38,7 +41,9 @@ test('people search prioritizes new profiles, separates unique handles from name
   assert.match(usernames, /usernameAvailable\(sb, requested, excludeId\)/);
   assert.doesNotMatch(usernames, /usernameAvailable\(sb,\s*displayName/);
   assert.match(auth, /requestedDisplayName: displayName\.value/);
-  assert.match(auth, /profiles\.update\(\{/);
+  assert.match(auth, /full_name: identity\.displayName/);
+  assert.match(auth, /sb\.from\('mw_profiles'\)\.upsert/);
+  assert.match(auth, /profiles\.update\(profile\)/);
 });
 
 test('group management schema and UI implement guarded joins, invitations and co-admin tools', () => {
@@ -1135,7 +1140,8 @@ test('bottom navigation opens Explore discovery and keeps LIVE reachable outside
   const serviceWorker = readFileSync(new URL('../milkyway/sw.js', import.meta.url), 'utf8');
   assert.match(main, /else if \(nav === 'explore'\) showExplore\(\)/);
   assert.match(main, /function showExplore\(\)[\s\S]*discoveryView\(\)\.then/);
-  assert.match(discovery, /searchPeople\(query\)/);
+  assert.match(discovery, /searchPeople\(query, \{ recent: query\.length < 2 \}\)/);
+  assert.match(discovery, /searchPeople\('', \{ recent: true \}\)/);
   assert.match(discovery, /HASHTAG/);
   assert.match(discovery, /post\.media\?\.audioUrl/);
   assert.match(discovery, /action: 'page'/);
