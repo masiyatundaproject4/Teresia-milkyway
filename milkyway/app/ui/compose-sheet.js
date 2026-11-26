@@ -528,6 +528,9 @@ export class ComposeSheet {
 
   #createPhotoEditor() {
     const filters = [
+      ['auto', t('editorAuto')],
+      ['auto-glow', t('editorAutoGlow')],
+      ['auto-crisp', t('editorAutoCrisp')],
       ['original', t('editorOriginal')],
       ['galaxy', t('editorGalaxyGlow')],
       ['vivid', t('editorVivid')],
@@ -535,6 +538,25 @@ export class ComposeSheet {
       ['crisp', t('editorCrisp')],
       ['mono', t('editorBlackWhite')],
     ];
+    const applyFilter = filter => {
+      const edit = this.#photoEdit();
+      if (!edit) return;
+      edit.filter = filter;
+      if (filter === 'auto' || filter === 'auto-glow' || filter === 'auto-crisp') {
+        Object.assign(edit, {
+          brightness: filter === 'auto-crisp' ? 102 : 104,
+          contrast: filter === 'auto-glow' ? 104 : filter === 'auto-crisp' ? 112 : 106,
+          saturation: filter === 'auto-glow' ? 116 : filter === 'auto-crisp' ? 106 : 108,
+          fit: 'fit',
+          zoom: 1,
+          panX: 0,
+          panY: 0,
+        });
+      } else if (filter === 'original') {
+        Object.assign(edit, { brightness: 100, contrast: 100, saturation: 100 });
+      }
+      this.#paintPhotoEditor();
+    };
     const stickers = ['✨', '🌙', '💫', '⭐'];
     this.editorImage = h('img', { class: 'creator-photo-editor-image', alt: '', draggable: 'false' });
     this.editorText = h('div', { class: 'creator-photo-editor-text', hidden: true });
@@ -564,12 +586,7 @@ export class ComposeSheet {
     const filterButtons = filters.map(([filter, label]) => {
       const button = h('button', {
         class: 'creator-photo-editor-filter', type: 'button', dataset: { filter },
-        onclick: () => {
-          const edit = this.#photoEdit();
-          if (!edit) return;
-          edit.filter = filter;
-          this.#paintPhotoEditor();
-        },
+        onclick: () => applyFilter(filter),
       }, label);
       return button;
     });
@@ -619,7 +636,7 @@ export class ComposeSheet {
       onclick: () => {
         const edit = this.#photoEdit();
         if (!edit) return;
-        Object.assign(edit, { zoom: 1, panX: 0, panY: 0, fit: 'fit', filter: 'original', brightness: 100, contrast: 100, saturation: 100, rotation: 0, text: '', textX: 50, textY: 50, sticker: '' });
+        Object.assign(edit, { zoom: 1, panX: 0, panY: 0, fit: 'fit', filter: 'auto', brightness: 104, contrast: 106, saturation: 108, rotation: 0, text: '', textX: 50, textY: 50, sticker: '' });
         this.#paintPhotoEditor();
       },
     }, t('editorReset'));
@@ -743,8 +760,8 @@ export class ComposeSheet {
   #photoEdit(entry = this.files[this.editorIndex]) {
     if (!entry || entry.kind !== 'image') return null;
     entry.edit ||= {
-      zoom: 1, panX: 0, panY: 0, fit: 'fit', filter: 'original',
-      brightness: 100, contrast: 100, saturation: 100, rotation: 0,
+      zoom: 1, panX: 0, panY: 0, fit: 'fit', filter: 'auto',
+      brightness: 104, contrast: 106, saturation: 108, rotation: 0,
       text: '', textX: 50, textY: 50, sticker: '',
     };
     return entry.edit;
@@ -756,6 +773,9 @@ export class ComposeSheet {
     const edit = this.#photoEdit(entry);
     const filter = {
       original: '',
+      auto: '',
+      'auto-glow': 'saturate(1.06)',
+      'auto-crisp': 'contrast(1.06)',
       galaxy: 'contrast(1.1) saturate(1.25) brightness(1.05)',
       vivid: 'saturate(1.45) contrast(1.08)',
       warm: 'sepia(.22) saturate(1.18)',
@@ -847,6 +867,9 @@ export class ComposeSheet {
           const scale = fitScale * edit.zoom;
           const filter = {
             original: '',
+            auto: '',
+            'auto-glow': 'saturate(1.06)',
+            'auto-crisp': 'contrast(1.06)',
             galaxy: 'contrast(1.1) saturate(1.25) brightness(1.05)',
             vivid: 'saturate(1.45) contrast(1.08)',
             warm: 'sepia(.22) saturate(1.18)',

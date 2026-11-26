@@ -1089,7 +1089,7 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .creator-template small { overflow: hidden; color: rgba(235,229,255,.9); font-size: 12px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
 .creator-photo-editor {
   position: absolute; z-index: 40; inset: 0; display: grid;
-  grid-template-rows: 44px minmax(96px, 1fr) minmax(150px, 36dvh) 16px;
+  grid-template-rows: 44px minmax(0, 1fr) minmax(150px, 28dvh) 16px;
   gap: 8px; width: 100%; height: 100dvh;
   padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 8px);
   overflow: hidden; background: url("../galaxy-starfield.svg") center / 420px 490px repeat,
@@ -1110,7 +1110,7 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .creator-photo-editor-close { display: grid; width: 38px; height: 38px; place-items: center; font-size: 24px; }
 .creator-photo-editor-sound { justify-self: center; padding: 0 12px; font-size: 10px; white-space: nowrap; }
 .creator-photo-editor-next { padding: 0 14px; background: linear-gradient(120deg, #7950c3, #396ba9); font-size: 11px; font-weight: 800; }
-.creator-photo-editor-stage { position: relative; display: grid; grid-template-columns: 30px minmax(0,1fr) 30px; align-items: center; gap: 4px; min-height: 0; }
+.creator-photo-editor-stage { position: relative; display: grid; grid-template-columns: 30px minmax(0,1fr) 30px; align-items: center; gap: 4px; width: 100%; min-width: 0; min-height: 0; }
 .creator-photo-editor-frame { position: relative; display: grid; width: 100%; height: 100%; min-height: 0; place-items: center; overflow: hidden; border: 1px solid rgba(204,186,255,.15); border-radius: 18px; background: rgba(4,5,17,.62); touch-action: none; }
 .creator-photo-editor-image { position: absolute; top: 50%; left: 50%; width: 100%; height: 100%; max-width: 100%; max-height: 100%; user-select: none; -webkit-user-drag: none; will-change: transform, filter; transition: transform .12s ease-out, filter .12s ease-out; }
 .creator-photo-editor-text { position: absolute; z-index: 2; max-width: 84%; padding: 4px 8px; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 850; line-height: 1.15; text-align: center; overflow-wrap: anywhere; -webkit-text-stroke: 1px rgba(0,0,0,.62); text-shadow: 0 2px 8px rgba(0,0,0,.8); transform: translate(-50%,-50%); touch-action: none; }
@@ -1159,7 +1159,7 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .creator-review .creator-submit-area { position: sticky; bottom: calc(-1 * env(safe-area-inset-bottom)); margin: 0 -16px calc(-1 * env(safe-area-inset-bottom)); padding: 10px 16px calc(env(safe-area-inset-bottom) + 8px); background: linear-gradient(180deg, rgba(13,15,46,.86), rgba(7,8,24,.99)); }
 @media (max-height: 650px) {
   .creator-photo-editor {
-    grid-template-rows: 38px minmax(72px, 1fr) minmax(124px, 38dvh) 12px;
+    grid-template-rows: 38px minmax(0, 1fr) minmax(124px, 30dvh) 12px;
     gap: 5px; padding-top: calc(env(safe-area-inset-top) + 5px); padding-bottom: calc(env(safe-area-inset-bottom) + 5px);
   }
   .creator-photo-editor-close { width: 34px; height: 34px; }
