@@ -1808,8 +1808,24 @@ test('production hardening scopes cleanup leases and uses short locale-aware lif
 
 test('public posts use the published schema without owner or publication filtering', async () => {
   const rows = [
-    { id: 'draft', created_at: '2026-01-02T00:00:00Z', title: 'Draft', category: 'art', description: 'First', media_url: '', media_type: 'image', title_en: 'Draft EN', title_sw: '', description_en: '', description_sw: '', storage_path: 'uploads/draft.jpg', published: false },
-    { id: 'legacy', created_at: '2026-01-01T00:00:00Z', title: '', category: '', description: '', media_url: 'https://cdn.example.test/legacy.png', media_type: 'image', title_en: '', title_sw: 'Legacy', description_en: '', description_sw: '', storage_path: '', published: null },
+    { id: 'draft', created_at: '2026-01-02T00:00:00Z', title: 'Draft', category: 'art', description: 'First', media_url: '', media_type: 'image', title_en: 'Draft EN', title_sw: '', description_en: '', description_sw: '', storage_path: 'uploads/draft.jpg', published: false, extra_info: null },
+    { id: 'legacy', created_at: '2026-01-01T00:00:00Z', title: '', category: '', description: '', media_url: 'https://cdn.example.test/legacy.png', media_type: 'image', title_en: '', title_sw: 'Legacy', description_en: '', description_sw: '', storage_path: '', published: null, extra_info: { source: 'test' } },
+    ...Array.from({ length: 15 }, (_, index) => ({
+      id: `post-${index + 3}`,
+      created_at: `2025-12-${String(31 - index).padStart(2, '0')}T00:00:00Z`,
+      title: `Post ${index + 3}`,
+      category: 'art',
+      description: '',
+      media_url: `https://cdn.example.test/${index + 3}.jpg`,
+      media_type: 'image',
+      title_en: '',
+      title_sw: '',
+      description_en: '',
+      description_sw: '',
+      storage_path: '',
+      published: true,
+      extra_info: null,
+    })),
   ];
   let selected = '';
   let queriedTable = '';
@@ -1831,8 +1847,9 @@ test('public posts use the published schema without owner or publication filteri
     },
   };
   const posts = await loadPublicPosts(sb);
+  assert.equal(posts.length, 17);
   assert.equal(queriedTable, 'posts');
-  assert.equal(selected, 'id,created_at,title,category,description,media_url,media_type,title_en,title_sw,description_en,description_sw,storage_path,published');
+  assert.equal(selected, 'id,created_at,title,category,description,media_url,media_type,title_en,title_sw,description_en,description_sw,storage_path,published,extra_info');
   assert.deepEqual(posts.map(post => post.published), [false, null]);
   assert.equal(storagePath, 'uploads/draft.jpg');
   assert.equal(posts[0].media_url, 'https://storage.example.test/uploads/draft.jpg');
@@ -1847,6 +1864,8 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
 
   assert.match(profile, /String\(id\) === String\(auth\.userId \|\| ''\)/);
   assert.match(profile, /results\.push\(\.\.\.await loadPublicPosts\(sb\)\)/);
+  assert.match(profile, /loadProfilePosts\(sb, id, username\),/);
+  assert.doesNotMatch(profile, /quiet\(loadProfilePosts\(sb, id, username\)\)/);
   assert.match(profile, /cachedProfilePosts\(id, username\)/);
   assert.match(profile, /this\.posts = Array\.isArray\(posts\) \? posts\.filter/);
   assert.match(profile, /count\(this\.posts\.length\)/);

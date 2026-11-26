@@ -321,11 +321,18 @@ async function loadProfilePosts(sb, id, username = '') {
   ];
   const results = [];
   let lastError = null;
+  let publicPostsError = null;
   for (const [column, value] of ownerFilters) {
     const availableOptional = [...optional];
     while (true) {
       const fields = [...PROFILE_POST_REQUIRED, ...availableOptional].join(',');
-      const result = await sb.from('mw_posts').select(fields).eq(column, value).order('created_at', { ascending: false }).limit(100);
+      let result;
+      try {
+        result = await sb.from('mw_posts').select(fields).eq(column, value).order('created_at', { ascending: false }).limit(100);
+      } catch (error) {
+        lastError = error;
+        break;
+      }
       if (!result.error) {
         const rows = Array.isArray(result.data) ? result.data : [];
         results.push(...rows.filter(row => row && typeof row === 'object' && profileOwnsPost(row, id, username))
@@ -344,13 +351,14 @@ async function loadProfilePosts(sb, id, username = '') {
     try {
       results.push(...await loadPublicPosts(sb));
     } catch (error) {
+      publicPostsError = error;
       console.warn('[profile] public posts could not be loaded.', error);
     }
   }
   const merged = new Map(cachedProfilePosts(id, username).map(post => [String(post.id), post]));
   for (const post of results) merged.set(String(post.id), post);
   const data = [...merged.values()].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || '')).slice(0, 100);
-  return { data, error: data.length ? null : lastError };
+  return { data, error: data.length ? null : lastError || publicPostsError };
 }
 
 function normalizeProfilePost(row, ownerId = '') {
@@ -796,7 +804,7 @@ export class ProfileView {
       const [followers, following, posts, followingRows, followerRows, requests] = await Promise.all([
         quiet(sb.from('mw_follows').select('follower_id', head).eq('following_id', id)),
         quiet(sb.from('mw_follows').select('following_id', head).eq('follower_id', id)),
-        quiet(loadProfilePosts(sb, id, username)),
+        loadProfilePosts(sb, id, username),
         quiet(sb.from('mw_follows').select('following_id').eq('follower_id', id).limit(2000)),
         quiet(sb.from('mw_follows').select('follower_id').eq('following_id', id).limit(2000)),
         this.own ? quiet(sb.from('mw_follow_requests').select('requester_id', head).eq('target_id', id)) : Promise.resolve({ count: 0 }),

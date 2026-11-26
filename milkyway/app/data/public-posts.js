@@ -1,6 +1,6 @@
 const PUBLIC_POST_COLUMNS = [
   'id', 'created_at', 'title', 'category', 'description', 'media_url', 'media_type',
-  'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published',
+  'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published', 'extra_info',
 ].join(',');
 
 const text = value => {
