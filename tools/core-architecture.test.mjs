@@ -788,16 +788,33 @@ test('DM call connection uses authenticated LiveKit tokens and reports server co
   assert.match(translations, /callServiceLimited:/);
 });
 
-test('profile post queries fall back across optional schema columns and normalize absent media', () => {
+test('profile post queries reconcile owner columns and cached posts while normalizing media shapes', () => {
   const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
-  assert.match(profile, /PROFILE_POST_REQUIRED = \['id', 'author_id', 'caption', 'media_url', 'media_type', 'created_at'\]/);
-  assert.match(profile, /PROFILE_POST_OPTIONAL = \['scheduled_at', 'slideshow_style', 'audio_url', 'media_items', 'media_preview_items'\]/);
-  assert.match(profile, /missingProfileColumn\(result\.error, optional\)/);
-  assert.match(profile, /optional\.splice\(optional\.indexOf\(missing\), 1\)/);
+  assert.match(profile, /PROFILE_POST_REQUIRED = \['id', 'caption', 'media_url', 'media_type', 'created_at'\]/);
+  assert.match(profile, /PROFILE_POST_OPTIONAL = \['author_id', 'user_id', 'username', 'author_username'/);
+  assert.match(profile, /\['author_id', id\],\s*\['user_id', id\]/);
+  assert.match(profile, /\.eq\(column, value\)/);
+  assert.match(profile, /cachedProfilePosts\(id, username\)/);
+  assert.match(profile, /postOwnerId\(post\) === String\(id\)/);
+  assert.match(profile, /media\.previewItems/);
   assert.match(profile, /Array\.isArray\(result\.data\) \? result\.data : \[\]/);
-  assert.match(profile, /media_url: mediaUrl, media_type: mediaType, media_items: mediaItems, media_preview_items: previews/);
+  assert.match(profile, /media_url: mediaUrl,[\s\S]*media_type: mediaType,[\s\S]*media_items: mediaItems/);
   assert.match(profile, /Array\.isArray\(post\.media_preview_items\)/);
+  assert.match(profile, /\[\.\.\.PROFILE_POST_REQUIRED, 'author_id'\]\.join\(','\)/);
   assert.match(profile, /postsError \|\| t\('retry'\)/);
+  assert.match(profile, /profileText\(row\.role \|\| row\.status\)/);
+});
+
+test('Nova profile toolbar opens Suggested Friends and Notifications with profile-specific sharing', () => {
+  const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
+  assert.match(profile, /openFollowers\?\.\(profile, \{ tab: 'suggested' \}\)/);
+  assert.match(profile, /openNotifications\?\.\(profile\)/);
+  assert.match(profile, /url\.searchParams\.set\('profile', profile\.id\)/);
+  assert.match(main, /new m\.NotificationsView/);
+  assert.match(main, /openNotifications: \(\) => notificationsView\(\)\.then\(view => view\.open\(\)\)/);
+  assert.match(main, /params\.get\('profile'\)/);
+  assert.match(main, /openProfile\(\{ id: sharedProfileId \}\)/);
 });
 
 test('profile photo upload is scoped, saved to the profile, and refreshed in the shared cache', () => {

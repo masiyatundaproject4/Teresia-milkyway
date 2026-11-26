@@ -38,6 +38,12 @@ const followersView = lazy(() => import('./ui/followers-view.js').then(m => new 
   openLive: room => showLive(room),
   requireLogin,
 })));
+const notificationsView = lazy(() => import('./ui/notifications-view.js').then(m => new m.NotificationsView({
+  onOpenLive: room => showLive(room),
+  onOpenMessage: peerId => { if (requireLogin()) inboxView().then(view => view.openWith({ id: peerId })); },
+  onOpenPost: id => fetchSharedPost(id).then(openPost).catch(error => toast(error?.message || t('imageUnavailable'))),
+  onOpenCall: callId => callView().then(calls => calls.handleNotification(callId)),
+})));
 function openCommunity() {
   if (!requireLogin()) return;
   document.querySelectorAll('.scope-tabs [role="tab"]').forEach(button => {
@@ -63,6 +69,7 @@ const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.Pr
   openChat: person => { if (requireLogin()) inboxView().then(view => view.openWith(person)); },
   openFollowers: (person, options) => followersView().then(view => view.open(person, options)),
   openActivity: person => followersView().then(view => view.open(person, { mode: 'activity' })),
+  openNotifications: () => notificationsView().then(view => view.open()),
 })));
 const profileSearch = lazy(() => import('./ui/profile-search.js').then(m => new m.ProfileSearch({ openProfile })));
 const composeSheet = lazy(() => import('./ui/compose-sheet.js').then(m => new m.ComposeSheet({ onGoLive: openGoLive })));
@@ -276,6 +283,14 @@ function showExplore() {
 }
 
 function route() {
+  const params = new URLSearchParams(location.search);
+  const sharedProfileId = params.get('profile');
+  if (/^[a-f0-9-]{36}$/i.test(sharedProfileId || '')) {
+    params.delete('profile');
+    const query = params.toString();
+    history.replaceState(null, '', location.pathname + (query ? `?${query}` : '') + location.hash);
+    openProfile({ id: sharedProfileId });
+  }
   const call = callLink(location.hash);
   if (call) {
     const params = new URLSearchParams(location.search);
