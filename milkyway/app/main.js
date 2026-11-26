@@ -282,6 +282,61 @@ function showExplore() {
   });
 }
 
+let swipeBackStart = null;
+const swipeBackBlocked = (target, panel) => {
+  if (target.closest?.('button, a, input, textarea, select, [contenteditable="true"], .sheet-grip, .profile-tabs, .profile-grid, .profile-toolbar, .connections-tabs, .connection-previews')) return true;
+  for (let node = target; node && node !== panel; node = node.parentElement) {
+    if (node.hasAttribute('data-no-swipe') && !node.classList.contains('connections-content')) return true;
+  }
+  return false;
+};
+document.addEventListener('pointerdown', event => {
+  swipeBackStart = null;
+  if ((event.pointerType === 'mouse' && event.button !== 0) || event.isPrimary === false) return;
+  const panel = event.target.closest?.('.sheet.profile-sheet, .sheet.connections-sheet');
+  const layer = panel?.closest('.sheet-layer');
+  if (!panel || layer?.hidden || swipeBackBlocked(event.target, panel)) return;
+  swipeBackStart = {
+    panel,
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    time: event.timeStamp,
+    axis: null,
+  };
+}, { passive: true });
+document.addEventListener('pointermove', event => {
+  if (!swipeBackStart || event.pointerId !== swipeBackStart.pointerId) return;
+  const dx = Math.abs(event.clientX - swipeBackStart.x);
+  const dy = Math.abs(event.clientY - swipeBackStart.y);
+  if (!swipeBackStart.axis && Math.max(dx, dy) >= 10) {
+    if (dy > dx * 1.15) swipeBackStart = null;
+    else if (dx >= dy * 1.25) swipeBackStart.axis = 'x';
+  }
+}, { passive: true });
+document.addEventListener('pointerup', event => {
+  if (!swipeBackStart || event.pointerId !== swipeBackStart.pointerId) return;
+  const { panel, x, y, time, axis } = swipeBackStart;
+  swipeBackStart = null;
+  if (axis !== 'x') return;
+  const dx = event.clientX - x;
+  const dy = event.clientY - y;
+  const distance = Math.abs(dx);
+  if (!distance || distance < Math.abs(dy) * 1.35) return;
+  const threshold = Math.max(56, panel.clientWidth * 0.18);
+  const velocity = distance / Math.max(1, event.timeStamp - time);
+  if (distance < threshold && (distance < 44 || velocity < 0.45)) return;
+  const direction = dx < 0 ? 'left' : 'right';
+  if (panel.classList.contains('profile-sheet') && direction === 'left') {
+    profileView().then(view => view.close());
+  } else if (panel.classList.contains('connections-sheet') && direction === 'right') {
+    followersView().then(view => view.sheet.close());
+  }
+}, { passive: true });
+document.addEventListener('pointercancel', event => {
+  if (event.pointerId === swipeBackStart?.pointerId) swipeBackStart = null;
+}, { passive: true });
+
 function route() {
   const params = new URLSearchParams(location.search);
   const sharedProfileId = params.get('profile');
