@@ -7,7 +7,7 @@ import { identifyMediaFile, openFilePicker } from '../core/media-files.js';
 import { optimizeImage } from '../core/media-optimizer.js';
 import { setImage, poster } from '../core/media.js';
 import { profiles } from '../data/profiles.js';
-import { actions } from '../data/feed.js';
+import { actions, feed } from '../data/feed.js';
 import { Sheet } from './sheet.js';
 import { h, icon, avatar, count, toast } from './dom.js';
 import { PostViewer, postKind } from './post-viewer.js';
@@ -39,8 +39,8 @@ function cacheCover(id, url) {
   }
 }
 
-const PROFILE_POST_REQUIRED = ['id', 'author_id', 'caption', 'media_url', 'media_type', 'created_at'];
-const PROFILE_POST_OPTIONAL = ['scheduled_at', 'slideshow_style', 'audio_url', 'media_items', 'media_preview_items'];
+const PROFILE_POST_REQUIRED = ['id', 'caption', 'media_url', 'media_type', 'created_at'];
+const PROFILE_POST_OPTIONAL = ['author_id', 'user_id', 'username', 'author_username', 'scheduled_at', 'slideshow_style', 'audio_url', 'media_items', 'media_preview_items'];
 const PROFILE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
 const PROFILE_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 const PROFILE_PHOTO_MAX_PIXELS = 40_000_000;
@@ -287,35 +287,85 @@ function missingProfileColumn(error, columns) {
   const message = String(error?.message || '');
   if (!['PGRST204', '42703'].includes(String(error?.code || ''))
     && !/schema cache|column .* does not exist|could not find the .*column/i.test(message)) return null;
-  return columns.find(column => new RegExp(`\\b${column}\\b`, 'i').test(message)) || columns[columns.length - 1] || null;
+  return columns.find(column => new RegExp(`\\b${column}\\b`, 'i').test(message)) || null;
 }
 
-async function loadProfilePosts(sb, id) {
+const postOwnerId = post => String(post?.author_id || post?.user_id || post?.author?.id || post?.authorId || '');
+const postUsername = post => String(post?.username || post?.author_username || post?.author?.username || '').replace(/^@/, '').toLowerCase();
+const profileOwnsPost = (post, id, username) => {
+  const ownerId = postOwnerId(post);
+  const handle = String(username || '').replace(/^@/, '').toLowerCase();
+  return ownerId === String(id) || Boolean(handle && (postUsername(post) === handle || ownerId.replace(/^@/, '').toLowerCase() === handle));
+};
+
+function cachedProfilePosts(id, username) {
+  const cached = ['foryou', 'following'].flatMap(scope => {
+    const posts = feed(scope).source.value?.posts;
+    return Array.isArray(posts) ? posts : [];
+  });
+  return cached.filter(post => post?.id && profileOwnsPost(post, id, username)).map(post => normalizeProfilePost(post, id));
+}
+
+async function loadProfilePosts(sb, id, username = '') {
   const optional = [...PROFILE_POST_OPTIONAL];
-  while (true) {
-    const fields = [...PROFILE_POST_REQUIRED, ...optional].join(',');
-    const result = await sb.from('mw_posts').select(fields).eq('author_id', id).order('created_at', { ascending: false }).limit(30);
-    if (!result.error) {
-      const rows = Array.isArray(result.data) ? result.data : [];
-      return { ...result, data: rows.filter(row => row && typeof row === 'object').map(normalizeProfilePost) };
+  const ownerFilters = [
+    ['author_id', id],
+    ['user_id', id],
+    ...(username ? [['username', username], ['author_username', username]] : []),
+  ];
+  const results = [];
+  let lastError = null;
+  for (const [column, value] of ownerFilters) {
+    const availableOptional = [...optional];
+    while (true) {
+      const fields = [...PROFILE_POST_REQUIRED, ...availableOptional].join(',');
+      const result = await sb.from('mw_posts').select(fields).eq(column, value).order('created_at', { ascending: false }).limit(100);
+      if (!result.error) {
+        const rows = Array.isArray(result.data) ? result.data : [];
+        results.push(...rows.filter(row => row && typeof row === 'object' && profileOwnsPost(row, id, username))
+          .map(row => normalizeProfilePost(row, id)));
+        break;
+      }
+      const missing = missingProfileColumn(result.error, [...availableOptional, ...PROFILE_POST_REQUIRED]);
+      if (!missing || !availableOptional.includes(missing)) {
+        lastError = result.error;
+        break;
+      }
+      availableOptional.splice(availableOptional.indexOf(missing), 1);
     }
-    const missing = missingProfileColumn(result.error, optional);
-    if (!missing) return result;
-    optional.splice(optional.indexOf(missing), 1);
   }
+  const merged = new Map(cachedProfilePosts(id, username).map(post => [String(post.id), post]));
+  for (const post of results) merged.set(String(post.id), post);
+  const data = [...merged.values()].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || '')).slice(0, 100);
+  return { data, error: data.length ? null : lastError };
 }
 
-function normalizeProfilePost(row) {
-  const mediaItems = Array.isArray(row.media_items) ? row.media_items.filter(item => typeof item === 'string') : [];
-  const previews = Array.isArray(row.media_preview_items) ? row.media_preview_items.filter(item => typeof item === 'string') : [];
-  const mediaUrl = typeof row.media_url === 'string' && row.media_url ? row.media_url : mediaItems[0] || '';
-  const mediaType = typeof row.media_type === 'string' ? row.media_type : /\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i.test(mediaUrl) ? 'video' : mediaUrl ? 'image' : null;
-  return { ...row, media_url: mediaUrl, media_type: mediaType, media_items: mediaItems, media_preview_items: previews };
+function normalizeProfilePost(row, ownerId = '') {
+  const media = row.media && typeof row.media === 'object' ? row.media : {};
+  const mediaItems = Array.isArray(row.media_items) ? row.media_items.filter(item => typeof item === 'string')
+    : Array.isArray(media.items) ? media.items.filter(item => typeof item === 'string') : [];
+  const previews = Array.isArray(row.media_preview_items) ? row.media_preview_items.filter(item => typeof item === 'string')
+    : Array.isArray(media.previewItems) ? media.previewItems.filter(item => typeof item === 'string') : [];
+  const mediaUrl = typeof row.media_url === 'string' && row.media_url ? row.media_url
+    : typeof media.url === 'string' && media.url ? media.url : mediaItems[0] || '';
+  const mediaTypeValue = row.media_type || media.type;
+  const mediaType = typeof mediaTypeValue === 'string' ? mediaTypeValue
+    : /\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i.test(mediaUrl) ? 'video' : mediaUrl ? 'image' : null;
+  return {
+    ...row,
+    author_id: row.author_id || row.user_id || row.author?.id || row.authorId || ownerId,
+    username: row.username || row.author_username || row.author?.username || '',
+    created_at: row.created_at || row.createdAt || '',
+    media_url: mediaUrl,
+    media_type: mediaType,
+    media_items: mediaItems,
+    media_preview_items: previews,
+  };
 }
 
 export class ProfileView {
-  constructor({ requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity }) {
-    this.hooks = { requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity };
+  constructor({ requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications }) {
+    this.hooks = { requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications };
     this.sheet = new Sheet({ title: t('me'), className: 'profile-sheet', onClose: () => this.#sheetClosed() });
     this.content = h('div', { class: 'profile' });
     this.sheet.body.append(this.content);
@@ -466,7 +516,7 @@ export class ProfileView {
       }
       if (token !== this.token || tab !== this.activeTab) return;
       if (!ids.length) { this.#renderGrid([], { message: tab === 'saved' ? t('noSaved') : t('empty') }); return; }
-      const { data, error } = await sb.from('mw_posts').select(PROFILE_POST_REQUIRED.join(',')).in('id', ids);
+      const { data, error } = await sb.from('mw_posts').select([...PROFILE_POST_REQUIRED, 'author_id'].join(',')).in('id', ids);
       if (error) throw error;
       if (token !== this.token || tab !== this.activeTab) return;
       const byId = new Map((Array.isArray(data) ? data : []).map(row => [String(row.id), normalizeProfilePost(row)]));
@@ -725,28 +775,30 @@ export class ProfileView {
     try {
       const sb = await supabase();
       const head = { count: 'exact', head: true };
-      const [profile, followers, following, posts, followingRows, followerRows, requests] = await Promise.all([
-        quiet(sb.from('mw_profiles').select('*').eq('id', id).maybeSingle()),
+      const profile = await quiet(sb.from('mw_profiles').select('*').eq('id', id).maybeSingle());
+      if (token !== this.token) return;
+      const row = profile.data || {};
+      const username = profileText(row.username || profiles.peek(id)?.username);
+      const [followers, following, posts, followingRows, followerRows, requests] = await Promise.all([
         quiet(sb.from('mw_follows').select('follower_id', head).eq('following_id', id)),
         quiet(sb.from('mw_follows').select('following_id', head).eq('follower_id', id)),
-        quiet(loadProfilePosts(sb, id)),
+        quiet(loadProfilePosts(sb, id, username)),
         quiet(sb.from('mw_follows').select('following_id').eq('follower_id', id).limit(2000)),
         quiet(sb.from('mw_follows').select('follower_id').eq('following_id', id).limit(2000)),
         this.own ? quiet(sb.from('mw_follow_requests').select('requester_id', head).eq('target_id', id)) : Promise.resolve({ count: 0 }),
       ]);
       if (token !== this.token) return;
-      const row = profile.data || {};
       const person = {
         id,
-        name: row.display_name || profiles.peek(id)?.name || (this.own ? auth.name : 'MilkyWay'),
-        username: row.username || '',
+        name: profileText(row.display_name || profiles.peek(id)?.name || (this.own ? auth.name : 'MilkyWay')),
+        username,
         usernameAutoGenerated: Boolean(row.username_auto_generated),
-        usernameUpdatedAt: row.username_updated_at || '',
-        avatar: row.avatar_url || '',
-        cover: row.cover_url || cachedCover(id),
-        bio: row.bio || '',
-        role: row.role || row.status || '',
-        interests: row.interests || [],
+        usernameUpdatedAt: profileText(row.username_updated_at),
+        avatar: profileText(row.avatar_url),
+        cover: profileText(row.cover_url || cachedCover(id)),
+        bio: profileText(row.bio),
+        role: profileText(row.role || row.status),
+        interests: Array.isArray(row.interests) ? row.interests.map(profileText).filter(Boolean) : profileText(row.interests),
         private: Boolean(row.is_private),
       };
       profiles.prime([{ id, name: person.name, username: person.username, avatar: person.avatar, private: person.private }]);
@@ -948,17 +1000,17 @@ export class ProfileView {
     const toolbar = h('div', { class: 'profile-toolbar', 'data-no-swipe': true },
       h('div', { class: 'profile-toolbar-group' },
         h('button', { class: 'profile-icon-btn', type: 'button', 'aria-label': t('back'), title: t('back'), onclick: () => this.close() }, '‹'),
-        h('button', { class: 'profile-icon-btn', type: 'button', 'aria-label': t('followers'), title: t('followers'), html: icon.guests, onclick: () => this.hooks.openFollowers?.(profile) })),
+        h('button', { class: 'profile-icon-btn', type: 'button', 'aria-label': t('suggestedAccounts'), title: t('suggestedAccounts'), html: icon.guests, onclick: () => this.hooks.openFollowers?.(profile, { tab: 'suggested' }) })),
       h('div', { class: 'profile-toolbar-group' },
         h('button', { class: 'profile-icon-btn', type: 'button', 'aria-label': t('share'), title: t('share'), html: icon.share, onclick: () => openShare({
           title: profileText(profile.name) || t('profile'),
           text: profileText(profile.bio),
-          url: new URL(location.pathname, location.origin).href,
+          url: (() => { const url = new URL(location.pathname, location.origin); url.searchParams.set('profile', profile.id); return url.href; })(),
         }) }),
         this.own ? h('button', {
           class: 'profile-icon-btn profile-activity-btn', type: 'button',
-          'aria-label': t('activity'), title: t('activity'),
-          onclick: () => (this.hooks.openActivity || this.hooks.openFollowers)?.(profile, { mode: 'activity' }),
+          'aria-label': t('notifications'), title: t('notifications'),
+          onclick: () => this.hooks.openNotifications?.(profile),
         }, h('span', {
           class: 'profile-icon-glyph profile-activity-glyph', 'aria-hidden': 'true',
           html: '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 3a7 7 0 0 0-7 7v4.2L3.6 17v1.5h16.8V17L19 14.2V10a7 7 0 0 0-7-7Zm0 18a2.5 2.5 0 0 0 2.4-1.8h-4.8A2.5 2.5 0 0 0 12 21Z"/><path d="M12 1v2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
