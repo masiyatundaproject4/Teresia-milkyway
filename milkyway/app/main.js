@@ -284,13 +284,13 @@ function showExplore() {
 
 let swipeBackStart = null;
 const swipeBackBlocked = (target, panel) => {
-  if (target.closest?.('button, a, input, textarea, select, [contenteditable="true"], .sheet-grip, .profile-tabs, .profile-grid, .profile-toolbar, .connections-tabs, .connection-previews')) return true;
+  if (target.closest?.('button, a, input, textarea, select, [contenteditable="true"], .sheet-grip, .profile-tabs, .profile-toolbar, .connections-tabs, .connection-previews, [data-horizontal-carousel]')) return true;
   for (let node = target; node && node !== panel; node = node.parentElement) {
     if (node.hasAttribute('data-no-swipe') && !node.classList.contains('connections-content')) return true;
   }
   return false;
 };
-document.addEventListener('pointerdown', event => {
+const beginSwipeBack = event => {
   swipeBackStart = null;
   if ((event.pointerType === 'mouse' && event.button !== 0) || event.isPrimary === false) return;
   const panel = event.target.closest?.('.sheet.profile-sheet, .sheet.connections-sheet');
@@ -304,8 +304,8 @@ document.addEventListener('pointerdown', event => {
     time: event.timeStamp,
     axis: null,
   };
-}, { passive: true });
-document.addEventListener('pointermove', event => {
+};
+const trackSwipeBack = event => {
   if (!swipeBackStart || event.pointerId !== swipeBackStart.pointerId) return;
   const dx = Math.abs(event.clientX - swipeBackStart.x);
   const dy = Math.abs(event.clientY - swipeBackStart.y);
@@ -313,8 +313,12 @@ document.addEventListener('pointermove', event => {
     if (dy > dx * 1.15) swipeBackStart = null;
     else if (dx >= dy * 1.25) swipeBackStart.axis = 'x';
   }
-}, { passive: true });
-document.addEventListener('pointerup', event => {
+};
+const swallowSwipeClick = event => {
+  event.stopImmediatePropagation();
+  event.preventDefault();
+};
+const finishSwipeBack = event => {
   if (!swipeBackStart || event.pointerId !== swipeBackStart.pointerId) return;
   const { panel, x, y, time, axis } = swipeBackStart;
   swipeBackStart = null;
@@ -327,15 +331,24 @@ document.addEventListener('pointerup', event => {
   const velocity = distance / Math.max(1, event.timeStamp - time);
   if (distance < threshold && (distance < 44 || velocity < 0.45)) return;
   const direction = dx < 0 ? 'left' : 'right';
+  let returnToOrbit = null;
   if (panel.classList.contains('profile-sheet') && direction === 'left') {
-    profileView().then(view => view.close());
+    returnToOrbit = () => profileView().then(view => view.close());
   } else if (panel.classList.contains('connections-sheet') && direction === 'right') {
-    followersView().then(view => view.sheet.close());
+    returnToOrbit = () => followersView().then(view => view.sheet.close());
   }
-}, { passive: true });
-document.addEventListener('pointercancel', event => {
+  if (!returnToOrbit) return;
+  document.addEventListener('click', swallowSwipeClick, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener('click', swallowSwipeClick, { capture: true }), 60);
+  returnToOrbit();
+};
+const cancelSwipeBack = event => {
   if (event.pointerId === swipeBackStart?.pointerId) swipeBackStart = null;
-}, { passive: true });
+};
+document.addEventListener('pointerdown', beginSwipeBack, { capture: true, passive: true });
+document.addEventListener('pointermove', trackSwipeBack, { capture: true, passive: true });
+document.addEventListener('pointerup', finishSwipeBack, { capture: true, passive: true });
+document.addEventListener('pointercancel', cancelSwipeBack, { capture: true, passive: true });
 
 function route() {
   const params = new URLSearchParams(location.search);

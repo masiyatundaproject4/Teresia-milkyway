@@ -1884,3 +1884,23 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.match(connections, /name: 'MilkyWay',\s*username: '',\s*avatar: '',\s*private: null/);
   assert.match(connections, /showing available follower entries/);
 });
+
+test('Orbit, Nova and Connections horizontal shortcuts use axis-locked captured gestures', () => {
+  const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
+  const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
+  const pager = readFileSync(new URL('../milkyway/app/ui/pager.js', import.meta.url), 'utf8');
+
+  assert.match(feed, /onHorizontalSwipe: \(direction, post\)/);
+  assert.match(feed, /direction === 'left'\) this\.hooks\.openProfile/);
+  assert.match(feed, /else this\.hooks\.openFollowers\?\./);
+  assert.match(pager, /#bindGestures\(\)/);
+  assert.match(pager, /root\.addEventListener\('pointerdown'/);
+  assert.match(pager, /Math\.abs\(dy\) > Math\.abs\(dx\) \? 'y' : 'x'/);
+  assert.match(main, /document\.addEventListener\('pointerdown', beginSwipeBack, \{ capture: true, passive: true \}\)/);
+  assert.match(main, /document\.addEventListener\('pointerup', finishSwipeBack, \{ capture: true, passive: true \}\)/);
+  assert.match(main, /dx >= dy \* 1\.25/);
+  assert.match(main, /dy > dx \* 1\.15/);
+  assert.match(main, /profileView\(\)\.then\(view => view\.close\(\)\)/);
+  assert.match(main, /followersView\(\)\.then\(view => view\.sheet\.close\(\)\)/);
+  assert.doesNotMatch(main, /\.profile-grid/);
+});
