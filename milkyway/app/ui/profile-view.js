@@ -18,9 +18,12 @@ import { openShare } from './share-sheet.js';
 import { USERNAME_COOLDOWN_MS, usernameAvailable, usernameValidationMessage } from '../data/usernames.js';
 
 const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
-const profileText = value => typeof value === 'string'
-  ? value.replace(/\b(?:null|undefined)\b/gi, '').replace(/\s{2,}/g, ' ').trim()
-  : '';
+const profileText = value => {
+  if (typeof value !== 'string') return '';
+  const cleaned = value.trim();
+  if (/^(?:null|undefined)$/i.test(cleaned)) return '';
+  return cleaned.replace(/\b(?:null|undefined)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+};
 const coverCacheKey = id => `mw_profile_cover_${String(id || '')}`;
 
 function cachedCover(id) {

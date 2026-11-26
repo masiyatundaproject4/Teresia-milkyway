@@ -3,7 +3,12 @@ const PUBLIC_POST_COLUMNS = [
   'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published',
 ].join(',');
 
-const text = value => typeof value === 'string' && !/^(?:null|undefined)$/i.test(value.trim()) ? value.trim() : '';
+const text = value => {
+  if (typeof value !== 'string') return '';
+  const cleaned = value.trim();
+  if (/^(?:null|undefined)$/i.test(cleaned)) return '';
+  return cleaned.replace(/\b(?:null|undefined)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+};
 
 function publicMediaUrl(sb, row) {
   const mediaUrl = text(row.media_url);

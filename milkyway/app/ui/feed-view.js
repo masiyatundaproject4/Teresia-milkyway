@@ -18,7 +18,12 @@ import { loadAds, loadSuggestions, weave, adImpression, adClick, dismissAd } fro
 import { openShare } from './share-sheet.js';
 
 const DOUBLE_TAP_MS = 260;
-const displayText = value => typeof value === 'string' ? value.replace(/\b(?:null|undefined)\b/gi, '').trim() : '';
+const displayText = value => {
+  if (typeof value !== 'string') return '';
+  const cleaned = value.trim();
+  if (/^(?:null|undefined)$/i.test(cleaned)) return '';
+  return cleaned.replace(/\b(?:null|undefined)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+};
 
 export class FeedView {
   constructor(root, { requireLogin, openComments, openGifts, openProfile, openFollowers, openPost }) {

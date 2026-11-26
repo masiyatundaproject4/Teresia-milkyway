@@ -1840,3 +1840,18 @@ test('public posts use the published schema without owner or publication filteri
   assert.equal(posts[1].caption, 'Legacy');
   assert.ok(posts.every(post => post.public_post && post.author_id === ''));
 });
+
+test('Nova profile merges public Orbit posts into the grid and counter data', () => {
+  const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
+  const publicPosts = readFileSync(new URL('../milkyway/app/data/public-posts.js', import.meta.url), 'utf8');
+
+  assert.match(profile, /String\(id\) === String\(auth\.userId \|\| ''\)/);
+  assert.match(profile, /results\.push\(\.\.\.await loadPublicPosts\(sb\)\)/);
+  assert.match(profile, /cachedProfilePosts\(id, username\)/);
+  assert.match(profile, /this\.posts = Array\.isArray\(posts\) \? posts\.filter/);
+  assert.match(profile, /count\(this\.posts\.length\)/);
+  assert.match(profile, /\^\(\?:null\|undefined\)\$/i);
+  assert.match(publicPosts, /select\(PUBLIC_POST_COLUMNS\)/);
+  assert.doesNotMatch(publicPosts, /\.eq\(['"](?:user_id|author_id)['"]/);
+  assert.doesNotMatch(publicPosts, /\.eq\(['"]published['"]/);
+});
