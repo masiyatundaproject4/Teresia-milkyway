@@ -402,8 +402,8 @@ function normalizeProfilePost(row, ownerId = '', sb = null) {
 }
 
 export class ProfileView {
-  constructor({ requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications }) {
-    this.hooks = { requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications };
+  constructor({ requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications, onOpen, onClose }) {
+    this.hooks = { requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications, onOpen, onClose };
     this.sheet = new Sheet({ title: t('me'), className: 'profile-sheet', onClose: () => this.#sheetClosed() });
     this.content = h('div', { class: 'profile' });
     this.sheet.body.append(this.content);
@@ -468,6 +468,7 @@ export class ProfileView {
 
   #sheetClosed() {
     clearInterval(this.usernameCooldownTimer);
+    this.hooks.onClose?.();
     const entry = this.historyEntry;
     if (!entry || this.handlingProfilePop) return;
     this.historyEntry = null;
@@ -713,6 +714,7 @@ export class ProfileView {
     this.sheet.panel.classList.toggle('profile-sheet-fullscreen', fullscreen);
     this.sheet.title = this.own ? t('me') : (profileText(candidate?.name || profiles.peek(id)?.name) || t('profile'));
     this.sheet.panel.setAttribute('aria-label', this.sheet.title);
+    this.hooks.onOpen?.();
     this.sheet.open();
     try {
       this.#render({ profile: candidate || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });

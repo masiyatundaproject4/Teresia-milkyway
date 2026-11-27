@@ -471,6 +471,16 @@ export class FeedView {
       if (!target || !post) return;
       const act = target.dataset.act;
       if (post.public_post) {
+        if (act === 'profile') {
+          event.stopPropagation();
+          this.hooks.openProfile({
+            id: post.profile_owner_id || post.author_id || post.user_id || post.owner_id || post.author?.id,
+            username: post.profile_username || post.username || post.handle || post.author_username || post.author_handle,
+            name: post.author_name || post.author?.name,
+            avatar: post.author?.avatar,
+          });
+          return;
+        }
         if (act === 'media') {
           if (mediaKind(post) === 'video') this.#tap(slide);
           else this.hooks.openPost?.(post);

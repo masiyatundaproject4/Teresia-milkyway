@@ -50,6 +50,20 @@ test('people search prioritizes new profiles, separates unique handles from name
   assert.match(auth, /profiles\.update\(profile\)/);
 });
 
+test('Nova and profile taps route to an open profile sheet for IDs and handles', () => {
+  const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
+  const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
+  const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
+  assert.match(main, /else if \(nav === 'me'\) openProfile\(\)/);
+  assert.match(main, /profiles\.matching\(handle\)\.find/);
+  assert.match(main, /\.eq\('username', handle\)\.maybeSingle\(\)/);
+  assert.match(main, /setNav\('me'\)/);
+  assert.match(main, /shell\.dataset\.view = context\.view/);
+  assert.match(feed, /if \(act === 'profile'\)[\s\S]*post\.profile_owner_id[\s\S]*post\.profile_username/);
+  assert.match(profile, /this\.hooks\.onOpen\?\.\(\)/);
+  assert.match(profile, /this\.hooks\.onClose\?\.\(\)/);
+});
+
 test('group management schema and UI implement guarded joins, invitations and co-admin tools', () => {
   const migration = readFileSync(new URL('../supabase/migrations/20261207_milkyway_dm_group_management.sql', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/milkyway-groups.js', import.meta.url), 'utf8');

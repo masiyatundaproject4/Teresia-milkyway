@@ -73,8 +73,27 @@ const novaMenu = lazy(() => import('./ui/settings-view.js').then(m => new m.Nova
     postViewer().then(viewer => viewer.open([post], 0, { own: true }));
   },
 })));
+let profileNavContext = null;
 const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.ProfileView({
   requireLogin, openCreate, openComments: post => commentsSheet().then(sheet => sheet.open(post)),
+  onOpen: () => {
+    if (!profileNavContext) {
+      profileNavContext = {
+        view: shell.dataset.view,
+        nav: document.querySelector('.nav-btn[aria-current]')?.dataset.nav || null,
+      };
+    }
+    setNav('me');
+  },
+  onClose: () => {
+    if (!profileNavContext) return;
+    const context = profileNavContext;
+    profileNavContext = null;
+    shell.dataset.view = context.view;
+    document.querySelectorAll('.nav-btn').forEach(button => {
+      button.toggleAttribute('aria-current', button.dataset.nav === context.nav);
+    });
+  },
   openMenu: profile => novaMenu().then(menu => menu.open(profile)),
   openChat: person => { if (requireLogin()) inboxView().then(view => view.openWith(person)); },
   openFollowers: (person, options) => followersView().then(view => view.open(person, options)),
@@ -207,17 +226,53 @@ function requireLogin(force = false) {
   return false;
 }
 // Any author (feed / Lives) or, with no argument, the signed-in user's own profile.
-function openProfile(person = null, options = {}) {
-  const personId = person && typeof person === 'object' && !Array.isArray(person)
-    && (typeof person.id === 'string' || typeof person.id === 'number')
-    ? String(person.id).trim() : '';
-  if (person != null && (!personId || /^(?:null|undefined)$/i.test(personId))) {
-    console.warn('[profile] Could not open profile: invalid profile ID.', person);
-    return;
+async function openProfile(person = null, options = {}) {
+  const candidate = person && typeof person === 'object' && !Array.isArray(person) ? person : null;
+  const idValue = [candidate?.id, candidate?.profile_owner_id, candidate?.author_id, candidate?.user_id, candidate?.owner_id,
+    candidate?.author?.id, candidate?.owner?.id]
+    .find(value => (typeof value === 'string' || typeof value === 'number')
+      && String(value).trim() && !/^(?:null|undefined)$/i.test(String(value).trim()));
+  let personId = idValue == null ? '' : String(idValue).trim();
+
+  if (person != null && !personId) {
+    const handleValue = typeof person === 'string'
+      ? person
+      : candidate?.username || candidate?.handle || candidate?.profile_username || candidate?.author_username || candidate?.author_handle;
+    const handle = typeof handleValue === 'string' ? handleValue.trim().replace(/^@+/, '').toLowerCase() : '';
+    if (!handle || /^(?:null|undefined)$/i.test(handle)) {
+      console.warn('[profile] Could not open profile: missing profile ID and username.', person);
+      toast(t('retry'));
+      return;
+    }
+    const cached = profiles.matching(handle).find(profile => profile.username.toLowerCase() === handle);
+    if (cached) personId = cached.id;
+    else {
+      try {
+        const client = await supabase();
+        const result = await client.from('mw_profiles').select('id,display_name,username,avatar_url')
+          .eq('username', handle).maybeSingle();
+        if (result.error) throw result.error;
+        if (result.data?.id != null) {
+          profiles.prime([result.data]);
+          personId = String(result.data.id).trim();
+        }
+      } catch (error) {
+        console.error('[profile] Could not resolve profile username.', error);
+        toast(t('retry'));
+        return;
+      }
+    }
+    if (!personId) {
+      console.warn('[profile] Could not resolve profile username.', handle);
+      toast(t('retry'));
+      return;
+    }
   }
   if (!personId && !requireLogin()) return;
-  profileView().then(view => view.open(personId ? { ...person, id: personId } : null, options)).catch(error => {
+  const profile = personId ? { ...(candidate || {}), id: personId } : null;
+  profileView().then(view => view.open(profile, options)).catch(error => {
     console.error('[profile] Could not open profile.', error);
+    toast(t('retry'));
   });
 }
 function openCreate() {
