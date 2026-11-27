@@ -729,10 +729,13 @@ test('Orbit feed subscribes to global post changes and Supabase publishes mw_pos
   assert.match(migration, /alter publication supabase_realtime add table public\.mw_posts/i);
   assert.match(view, /source\.load\(\)\.then\(\(\) => source\.refresh\(\)\)/);
   assert.match(view, /source\?\.source\.error[\s\S]*feedLoadFailed/);
+  assert.match(view, /if \(this\.pager\.items\.length \|\| hasFeedPosts\(source\?\.source\?\.value\)\)\s*\{\s*this\.#setStatus\(null\)/);
+  assert.match(view, /this\.#setStatus\(this\.pager\.items\.length \|\| hasFeedPosts\(source\.source\.value\) \? null : 'loading'\)/);
   assert.match(view, /if \(this\.scope === 'foryou'\) items = weave\(items, this\.promo\)/);
   assert.match(feed, /loadPublicPosts\(sb, \{ publishedOnly: true \}\)/);
   assert.match(main, /setScope\('community'\)/);
   assert.match(main, /button\.dataset\.scope === next[\s\S]*button\.hasAttribute\('data-community'\)/);
+  assert.match(main, /value = Promise\.resolve\(\)\.then\(loader\)\.catch\(error => \{\s*value = null;\s*throw error;/);
   assert.match(sync, /get error\(\) \{ return error; \}/);
 });
 

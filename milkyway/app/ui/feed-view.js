@@ -18,6 +18,8 @@ import { loadAds, loadSuggestions, weave, adImpression, adClick, dismissAd } fro
 import { openShare } from './share-sheet.js';
 
 const DOUBLE_TAP_MS = 260;
+const hasFeedPosts = value => Array.isArray(value?.posts)
+  && value.posts.some(post => post && typeof post === 'object' && !post.kind && post.id && !deletedPosts.has(post.id));
 const displayText = value => {
   if (typeof value !== 'string') return '';
   const cleaned = value.trim();
@@ -88,7 +90,7 @@ export class FeedView {
     this.interacted = false;
     const source = this.source;
     if (!source) return Promise.resolve();
-    this.#setStatus('loading');
+    this.#setStatus(this.pager.items.length || hasFeedPosts(source.source.value) ? null : 'loading');
     return source.refresh().then(() => this.#emptyCheck(source));
   }
   focus() { this.surface.focus({ preventScroll: true }); }
@@ -103,7 +105,7 @@ export class FeedView {
 
   #apply(value) {
     this.lastValue = value;
-    const live = post => !post.kind && !deletedPosts.has(post.id);
+    const live = post => post && typeof post === 'object' && !post.kind && post.id && !deletedPosts.has(post.id);
     const incoming = (value?.posts || []).filter(live);
     const current = this.pager.items.filter(live);
     let items = incoming;
@@ -121,7 +123,10 @@ export class FeedView {
 
   #emptyCheck(source = this.source) {
     if (source !== this.source) return;
-    if (this.pager.items.length) return this.#setStatus(null);
+    if (this.pager.items.length || hasFeedPosts(source?.source?.value)) {
+      this.#setStatus(null);
+      return;
+    }
     if (navigator.onLine === false) return this.#setStatus('offline');
     this.#setStatus(source?.source.error ? 'feedLoadFailed' : this.scope === 'following' ? 'emptyFollowing' : 'empty');
   }

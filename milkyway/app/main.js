@@ -26,7 +26,20 @@ const $ = id => document.getElementById(id);
 const shell = document.documentElement;
 
 // ---- Lazily created panels (code downloads on first use) -------------------------------------------------
-const lazy = loader => { let value; const get = () => (value ||= loader()); get.loaded = () => Boolean(value); return get; };
+const lazy = loader => {
+  let value;
+  const get = () => {
+    if (!value) {
+      value = Promise.resolve().then(loader).catch(error => {
+        value = null;
+        throw error;
+      });
+    }
+    return value;
+  };
+  get.loaded = () => Boolean(value);
+  return get;
+};
 const authSheet = lazy(() => import('./ui/auth-sheet.js').then(m => new m.AuthSheet()));
 const commentsSheet = lazy(() => import('./ui/comments-sheet.js').then(m => new m.CommentsSheet({ requireLogin })));
 const giftTray = lazy(() => import('./ui/gift-tray.js').then(m => new m.GiftTray({
