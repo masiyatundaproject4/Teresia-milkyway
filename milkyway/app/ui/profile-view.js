@@ -17,6 +17,9 @@ import { openShare } from './share-sheet.js';
 import { USERNAME_COOLDOWN_MS, usernameAvailable, usernameValidationMessage } from '../data/usernames.js';
 
 const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
+const profilePresenceOnline = id => Boolean(
+  id && typeof presence?.isOnline === 'function' && presence.isOnline(String(id)) === true,
+);
 const profileText = value => {
   if (typeof value !== 'string') return '';
   const cleaned = value.trim();
@@ -399,17 +402,17 @@ function normalizeProfilePost(row, ownerId = '', sb = null) {
 }
 
 export class ProfileView {
-  constructor({ requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications }) {
-    this.hooks = { requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications };
+  constructor({ requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications, onOpen, onClose }) {
+    this.hooks = { requireLogin, openCreate, openComments, openMenu, openChat, openFollowers, openActivity, openNotifications, onOpen, onClose };
     this.sheet = new Sheet({ title: t('me'), className: 'profile-sheet', onClose: () => this.#sheetClosed() });
     this.content = h('div', { class: 'profile' });
     this.sheet.body.append(this.content);
-    presence.subscribe(() => {
+    presence?.subscribe?.(() => {
       for (const node of this.content.querySelectorAll('[data-presence]')) {
-        node.classList.toggle('online', presence.isOnline(node.dataset.presence));
+        node.classList.toggle('online', profilePresenceOnline(node.dataset?.presence));
       }
       for (const node of this.content.querySelectorAll('.profile-online-status')) {
-        node.hidden = !presence.isOnline(node.dataset.userId);
+        node.hidden = !profilePresenceOnline(node.dataset?.userId);
       }
     });
     this.token = 0;
@@ -465,6 +468,7 @@ export class ProfileView {
 
   #sheetClosed() {
     clearInterval(this.usernameCooldownTimer);
+    this.hooks.onClose?.();
     const entry = this.historyEntry;
     if (!entry || this.handlingProfilePop) return;
     this.historyEntry = null;
@@ -694,9 +698,13 @@ export class ProfileView {
   }
 
   /** person: { id, name, username, avatar } or null for the signed-in user. */
-  open(person = null, { photo = null, fullscreen = false } = {}) {
-    const id = String(person?.id || auth.userId || '');
-    if (!id) return;
+  open(person = null, options = {}) {
+    const candidate = person && typeof person === 'object' && !Array.isArray(person) ? person : null;
+    const rawId = candidate?.id ?? auth.userId;
+    if (typeof rawId !== 'string' && typeof rawId !== 'number') return;
+    const id = String(rawId).trim();
+    if (!id || /^(?:null|undefined)$/i.test(id)) return;
+    const { photo = null, fullscreen = false } = options && typeof options === 'object' ? options : {};
     this.pendingPhoto = photo;
     this.id = id;
     this.own = id === auth.userId;
@@ -704,12 +712,24 @@ export class ProfileView {
     this.postAudiences = {};
     this.audienceLoadError = false;
     this.sheet.panel.classList.toggle('profile-sheet-fullscreen', fullscreen);
-    this.sheet.title = this.own ? t('me') : (profileText(person?.name || profiles.peek(id)?.name) || t('profile'));
+    this.sheet.title = this.own ? t('me') : (profileText(candidate?.name || profiles.peek(id)?.name) || t('profile'));
     this.sheet.panel.setAttribute('aria-label', this.sheet.title);
-    this.#render({ profile: person || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });
-    this.#pushProfileHistory();
     this.sheet.open();
-    this.#load(id);
+    this.hooks.onOpen?.();
+    try {
+      this.#render({ profile: candidate || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });
+    } catch (error) {
+      console.error('[profile] Profile view could not be rendered.', error);
+      this.#showLoadError(id);
+    }
+    this.#pushProfileHistory();
+    void this.#load(id);
+  }
+
+  #showLoadError(id) {
+    this.content.replaceChildren(h('div', { class: 'empty-card profile-load-error' },
+      h('p', {}, navigator.onLine === false ? t('offline') : t('profileLoadFailed')),
+      h('button', { class: 'pill-btn', type: 'button', onclick: () => { void this.#load(id); } }, t('retry'))));
   }
 
   openForPhoto(file) {
@@ -903,7 +923,7 @@ export class ProfileView {
     } catch (error) {
       if (token === this.token) {
         console.error('[profile] profile data could not be loaded.', error);
-        this.#render({ profile: profiles.peek(id) || { id }, error: true });
+        this.#showLoadError(id);
       }
     }
   }
@@ -1077,9 +1097,9 @@ export class ProfileView {
           this.#quickPickImage('avatar');
         },
       },
-        h('span', { class: `presence-avatar${presence.isOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
+        h('span', { class: `presence-avatar${profilePresenceOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
           profileAvatar, h('i', { class: 'presence-dot', 'aria-hidden': 'true' })))
-      : h('span', { class: `presence-avatar${presence.isOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
+      : h('span', { class: `presence-avatar${profilePresenceOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
         profileAvatar, h('i', { class: 'presence-dot', 'aria-hidden': 'true' }));
     const toolbar = h('div', { class: 'profile-toolbar', 'data-no-swipe': true },
       h('div', { class: 'profile-toolbar-group' },
@@ -1119,7 +1139,7 @@ export class ProfileView {
         h('small', {
           class: 'presence-label profile-online-status',
           'data-user-id': profile.id,
-          hidden: !presence.isOnline(profile.id),
+          hidden: !profilePresenceOnline(profile.id),
         }, t('online')));
     const bio = profileText(profile.bio)
       ? h('p', { class: 'profile-bio' }, profileText(profile.bio))

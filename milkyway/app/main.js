@@ -24,9 +24,26 @@ const soon = () => toast(t('soon'));
 
 const $ = id => document.getElementById(id);
 const shell = document.documentElement;
+const hasOpenSheet = () => [...document.querySelectorAll('.sheet-layer')].some(layer => !layer.hidden);
+const syncPlayback = () => playback.suspend(shell.dataset.view !== 'home'
+  || hasOpenSheet() || Boolean(document.querySelector('.pv-layer:not([hidden])')));
+document.addEventListener('mw:sheetchange', syncPlayback);
 
 // ---- Lazily created panels (code downloads on first use) -------------------------------------------------
-const lazy = loader => { let value; const get = () => (value ||= loader()); get.loaded = () => Boolean(value); return get; };
+const lazy = loader => {
+  let value;
+  const get = () => {
+    if (!value) {
+      value = Promise.resolve().then(loader).catch(error => {
+        value = null;
+        throw error;
+      });
+    }
+    return value;
+  };
+  get.loaded = () => Boolean(value);
+  return get;
+};
 const authSheet = lazy(() => import('./ui/auth-sheet.js').then(m => new m.AuthSheet()));
 const commentsSheet = lazy(() => import('./ui/comments-sheet.js').then(m => new m.CommentsSheet({ requireLogin })));
 const giftTray = lazy(() => import('./ui/gift-tray.js').then(m => new m.GiftTray({
@@ -60,8 +77,24 @@ const novaMenu = lazy(() => import('./ui/settings-view.js').then(m => new m.Nova
     postViewer().then(viewer => viewer.open([post], 0, { own: true }));
   },
 })));
+let profileNavContext = null;
 const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.ProfileView({
   requireLogin, openCreate, openComments: post => commentsSheet().then(sheet => sheet.open(post)),
+  onOpen: () => {
+    if (profileNavContext === null) {
+      profileNavContext = { nav: document.querySelector('.nav-btn[aria-current]')?.dataset.nav || null };
+    }
+    document.querySelectorAll('.nav-btn').forEach(button => button.toggleAttribute('aria-current', button.dataset.nav === 'me'));
+  },
+  onClose: () => {
+    if (!profileNavContext) return;
+    const previousNav = profileNavContext.nav;
+    profileNavContext = null;
+    const activeNav = document.querySelector('.nav-btn[aria-current]')?.dataset.nav;
+    if (activeNav === 'me') {
+      document.querySelectorAll('.nav-btn').forEach(button => button.toggleAttribute('aria-current', Boolean(previousNav) && button.dataset.nav === previousNav));
+    }
+  },
   openMenu: profile => novaMenu().then(menu => menu.open(profile)),
   openChat: person => { if (requireLogin()) inboxView().then(view => view.openWith(person)); },
   openFollowers: (person, options) => followersView().then(view => view.open(person, options)),
@@ -80,8 +113,8 @@ function openPost(post) {
   playback.suspend(true);
   postViewer().then(viewer => {
     // A copy: the popup keeps its own counts; likes still go through the shared feed actions.
-    viewer.open([{ ...post, _counted: true }], 0, { own: false, onClose: () => { if (shell.dataset.view === 'home') playback.suspend(false); } });
-  }).catch(() => { playback.suspend(shell.dataset.view !== 'home'); toast(t('imageUnavailable')); });
+    viewer.open([{ ...post, _counted: true }], 0, { own: false, onClose: syncPlayback });
+  }).catch(() => { syncPlayback(); toast(t('imageUnavailable')); });
 }
 let ambientLiveSession = null;
 let ambientLiveRequest = 0;
@@ -179,7 +212,7 @@ playback.onMute(muted => {
 const discoveryView = lazy(() => import('./ui/discovery-view.js').then(m => new m.DiscoveryView($('exploreView'), { openProfile, openPost })));
 const liveView = lazy(() => import('./ui/live-view.js').then(m => new m.LiveView($('liveView'), {
   requireLogin, openProfile, onClose: () => showHome(),
-  onPreliveClose: () => playback.suspend(shell.dataset.view !== 'home'),
+  onPreliveClose: syncPlayback,
   openRoom: room => showLive(room),
   listenLive,
   takeAmbientSession,
@@ -194,9 +227,52 @@ function requireLogin(force = false) {
   return false;
 }
 // Any author (feed / Lives) or, with no argument, the signed-in user's own profile.
-function openProfile(person = null, options = {}) {
-  if (!person?.id && !requireLogin()) return;
-  profileView().then(view => view.open(person?.id ? person : null, options));
+async function openProfile(person = null, options = {}) {
+  const candidate = person && typeof person === 'object' && !Array.isArray(person) ? person : null;
+  const idValue = [candidate?.id, candidate?.profile_owner_id, candidate?.author_id, candidate?.user_id, candidate?.owner_id,
+    candidate?.author?.id, candidate?.owner?.id]
+    .find(value => (typeof value === 'string' || typeof value === 'number')
+      && String(value).trim() && !/^(?:null|undefined)$/i.test(String(value).trim()));
+  let personId = idValue == null ? '' : String(idValue).trim();
+
+  if (person != null && !personId) {
+    const handleValue = typeof person === 'string'
+      ? person
+      : candidate?.username || candidate?.handle || candidate?.profile_username || candidate?.author_username || candidate?.author_handle;
+    const handle = typeof handleValue === 'string' ? handleValue.trim().replace(/^@+/, '').toLowerCase() : '';
+    if (!handle || /^(?:null|undefined)$/i.test(handle)) {
+      console.warn('[profile] Could not open profile: missing profile ID and username.', person);
+      toast(t('noResults'));
+      return;
+    }
+    const cached = profiles.matching(handle).find(profile => profile.username.toLowerCase() === handle);
+    if (cached) personId = cached.id;
+    else {
+      try {
+        const client = await supabase();
+        const result = await client.from('mw_profiles').select('id,display_name,username,avatar_url')
+          .eq('username', handle).maybeSingle();
+        if (result.error) throw result.error;
+        if (result.data?.id != null) {
+          profiles.prime([result.data]);
+          personId = String(result.data.id).trim();
+        }
+      } catch (error) {
+        console.error('[profile] Could not resolve profile username.', error);
+        return;
+      }
+    }
+    if (!personId) {
+      console.warn('[profile] Could not resolve profile username.', handle);
+      toast(t('noResults'));
+      return;
+    }
+  }
+  if (!personId && !requireLogin()) return;
+  const profile = personId ? { ...(candidate || {}), id: personId } : null;
+  profileView().then(view => view.open(profile, options)).catch(error => {
+    console.error('[profile] Could not open profile.', error);
+  });
 }
 function openCreate() {
   if (requireLogin()) composeSheet().then(sheet => sheet.open());
@@ -235,24 +311,25 @@ function setScope(next) {
 // ---- Views ------------------------------------------------------------------------------------------------
 function setNav(name) {
   document.querySelectorAll('.nav-btn').forEach(button => button.toggleAttribute('aria-current', button.dataset.nav === name));
-  shell.dataset.view = name;
 }
 function showHome() {
   if (liveView.loaded()) liveView().then(view => view.close());
   $('liveView').hidden = true;
   $('exploreView').hidden = true;
   $('feedView').hidden = false;
-  playback.suspend(false);
+  shell.dataset.view = 'home';
+  syncPlayback();
   setNav('home');
   if (location.hash.startsWith('#live')) history.replaceState(null, '', location.pathname);
   feedView.focus();
 }
 function showLive(room = null) {
   if (!requireLogin()) return;
-  playback.suspend(true);
   $('feedView').hidden = true;
   $('exploreView').hidden = true;
   $('liveView').hidden = false;
+  shell.dataset.view = 'live';
+  syncPlayback();
   setNav('live');
   if (!location.hash.startsWith('#live')) history.pushState({ live: true }, '', room ? `#live=${encodeURIComponent(room)}` : '#live');
   liveView().then(view => view.open(room));
@@ -264,7 +341,7 @@ function openGoLive() {
     view.openGoLive();
   }).catch(error => {
     console.error('[live] studio could not be opened', error);
-    playback.suspend(shell.dataset.view !== 'home');
+    syncPlayback();
     toast(error?.message || t('liveUnavailable'));
   });
 }
@@ -274,7 +351,8 @@ function showExplore() {
   $('feedView').hidden = true;
   $('liveView').hidden = true;
   $('exploreView').hidden = false;
-  playback.suspend(true);
+  shell.dataset.view = 'explore';
+  syncPlayback();
   setNav('explore');
   discoveryView().then(view => view.open()).catch(error => {
     console.error('[explore] discovery view could not be opened', error);
