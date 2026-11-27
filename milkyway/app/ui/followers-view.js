@@ -175,10 +175,14 @@ export class FollowersView {
     try {
       const sb = await supabase();
       if (auth.signedIn()) {
-        const { data: outgoing, error: outgoingError } = await sb.from('mw_follow_requests')
-          .select('target_id').eq('requester_id', auth.userId).limit(500);
-        if (outgoingError) throw outgoingError;
-        (outgoing || []).forEach(row => profiles.setRequested(row.target_id, true));
+        try {
+          const { data: outgoing, error: outgoingError } = await sb.from('mw_follow_requests')
+            .select('target_id').eq('requester_id', auth.userId).limit(500);
+          if (outgoingError) throw outgoingError;
+          (outgoing || []).forEach(row => profiles.setRequested(row.target_id, true));
+        } catch (error) {
+          console.warn('[connections] Outgoing follow requests could not be loaded.', error);
+        }
       }
       const readEdges = async (column, ownerColumn) => {
         let result = await sb.from('mw_follows').select(`${column},created_at`)
@@ -244,15 +248,24 @@ export class FollowersView {
       }
 
       if (this.own) {
-        const requestResult = await sb.from('mw_follow_requests').select('requester_id,created_at').eq('target_id', auth.userId).order('created_at', { ascending: false }).limit(200);
-        if (requestResult.error) throw requestResult.error;
-        this.requests = requestResult.data || [];
-        const requestIds = this.requests.map(row => String(row.requester_id || '')).filter(Boolean);
+        try {
+          const requestResult = await sb.from('mw_follow_requests').select('requester_id,created_at')
+            .eq('target_id', auth.userId).order('created_at', { ascending: false }).limit(200);
+          if (requestResult.error) throw requestResult.error;
+          this.requests = requestResult.data || [];
+        } catch (error) {
+          console.warn('[connections] Incoming follow requests could not be loaded.', error);
+        }
+        const requestIds = (this.requests || []).map(row => String(row.requester_id || '')).filter(Boolean);
         if (requestIds.length) {
-          const { data: requestProfiles, error: requestProfileError } = await sb.from('mw_profiles')
-            .select('id,display_name,username,avatar_url,is_private').in('id', requestIds);
-          if (requestProfileError) throw requestProfileError;
-          for (const row of requestProfiles || []) peopleById.set(String(row.id), safePerson(row));
+          try {
+            const { data: requestProfiles, error: requestProfileError } = await sb.from('mw_profiles')
+              .select('id,display_name,username,avatar_url,is_private').in('id', requestIds);
+            if (requestProfileError) throw requestProfileError;
+            for (const row of requestProfiles || []) peopleById.set(String(row.id), safePerson(row));
+          } catch (error) {
+            console.warn('[connections] Follow request profiles could not be loaded.', error);
+          }
         }
       } else {
         this.requests = [];
