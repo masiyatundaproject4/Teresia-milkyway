@@ -208,10 +208,16 @@ function requireLogin(force = false) {
 }
 // Any author (feed / Lives) or, with no argument, the signed-in user's own profile.
 function openProfile(person = null, options = {}) {
-  if (!person?.id && !requireLogin()) return;
-  profileView().then(view => view.open(person?.id ? person : null, options)).catch(error => {
+  const personId = person && typeof person === 'object' && !Array.isArray(person)
+    && (typeof person.id === 'string' || typeof person.id === 'number')
+    ? String(person.id).trim() : '';
+  if (person != null && (!personId || /^(?:null|undefined)$/i.test(personId))) {
+    console.warn('[profile] Could not open profile: invalid profile ID.', person);
+    return;
+  }
+  if (!personId && !requireLogin()) return;
+  profileView().then(view => view.open(personId ? { ...person, id: personId } : null, options)).catch(error => {
     console.error('[profile] Could not open profile.', error);
-    toast(t('retry'));
   });
 }
 function openCreate() {

@@ -697,9 +697,13 @@ export class ProfileView {
   }
 
   /** person: { id, name, username, avatar } or null for the signed-in user. */
-  open(person = null, { photo = null, fullscreen = false } = {}) {
-    const id = String(person?.id || auth.userId || '');
-    if (!id) return;
+  open(person = null, options = {}) {
+    const candidate = person && typeof person === 'object' && !Array.isArray(person) ? person : null;
+    const rawId = candidate?.id ?? auth.userId;
+    if (typeof rawId !== 'string' && typeof rawId !== 'number') return;
+    const id = String(rawId).trim();
+    if (!id || /^(?:null|undefined)$/i.test(id)) return;
+    const { photo = null, fullscreen = false } = options && typeof options === 'object' ? options : {};
     this.pendingPhoto = photo;
     this.id = id;
     this.own = id === auth.userId;
@@ -707,12 +711,23 @@ export class ProfileView {
     this.postAudiences = {};
     this.audienceLoadError = false;
     this.sheet.panel.classList.toggle('profile-sheet-fullscreen', fullscreen);
-    this.sheet.title = this.own ? t('me') : (profileText(person?.name || profiles.peek(id)?.name) || t('profile'));
+    this.sheet.title = this.own ? t('me') : (profileText(candidate?.name || profiles.peek(id)?.name) || t('profile'));
     this.sheet.panel.setAttribute('aria-label', this.sheet.title);
-    this.#render({ profile: person || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });
+    try {
+      this.#render({ profile: candidate || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });
+    } catch (error) {
+      console.error('[profile] Profile view could not be rendered.', error);
+      this.#showLoadError(id);
+    }
     this.#pushProfileHistory();
     this.sheet.open();
-    this.#load(id);
+    void this.#load(id);
+  }
+
+  #showLoadError(id) {
+    this.content.replaceChildren(h('div', { class: 'empty-card profile-load-error' },
+      h('p', {}, t('retry')),
+      h('button', { class: 'pill-btn', type: 'button', onclick: () => { void this.#load(id); } }, t('retry'))));
   }
 
   openForPhoto(file) {
@@ -906,7 +921,7 @@ export class ProfileView {
     } catch (error) {
       if (token === this.token) {
         console.error('[profile] profile data could not be loaded.', error);
-        this.#render({ profile: profiles.peek(id) || { id }, error: true });
+        this.#showLoadError(id);
       }
     }
   }
