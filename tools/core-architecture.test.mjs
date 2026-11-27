@@ -55,6 +55,7 @@ test('Nova and profile taps route to an open profile sheet for IDs and handles',
   const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
   const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
   const sheet = readFileSync(new URL('../milkyway/app/ui/sheet.js', import.meta.url), 'utf8');
+  const i18n = readFileSync(new URL('../milkyway/app/core/i18n.js', import.meta.url), 'utf8');
   assert.match(main, /else if \(nav === 'me'\) openProfile\(\)/);
   assert.match(main, /profiles\.matching\(handle\)\.find/);
   assert.match(main, /\.eq\('username', handle\)\.maybeSingle\(\)/);
@@ -67,7 +68,10 @@ test('Nova and profile taps route to an open profile sheet for IDs and handles',
   assert.match(feed, /const retryable = kind === 'offline' \|\| kind === 'feedLoadFailed'/);
   assert.match(profile, /this\.hooks\.onOpen\?\.\(\)/);
   assert.match(profile, /this\.hooks\.onClose\?\.\(\)/);
-  assert.match(profile, /h\('p', \{\}, t\('connectionLost'\)\)/);
+  assert.match(profile, /navigator\.onLine === false \? t\('offline'\) : t\('profileLoadFailed'\)/);
+  assert.match(i18n, /profileLoadFailed: 'Could not load this profile/);
+  assert.doesNotMatch(main, /toast\(t\('connectionLost'\)\)/);
+  assert.doesNotMatch(main, /toast\(t\('profileLoadFailed'\)\)/);
   assert.match(sheet, /dispatchEvent\(new Event\('mw:sheetchange'\)\)/);
 });
 
