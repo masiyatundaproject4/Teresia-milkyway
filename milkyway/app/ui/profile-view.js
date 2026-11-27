@@ -5,7 +5,6 @@ import { api, auth, supabase } from '../core/net.js';
 import { config } from '../config.js';
 import { identifyMediaFile, openFilePicker } from '../core/media-files.js';
 import { optimizeImage } from '../core/media-optimizer.js';
-import { setImage, poster } from '../core/media.js';
 import { profiles } from '../data/profiles.js';
 import { loadPublicPosts, portfolioMediaUrl } from '../data/public-posts.js';
 import { actions, feed } from '../data/feed.js';
@@ -298,8 +297,8 @@ function missingProfileColumn(error, columns) {
   return columns.find(column => new RegExp(`\\b${column}\\b`, 'i').test(message)) || null;
 }
 
-const postOwnerId = post => String(post?.author_id || post?.user_id || post?.author?.id || post?.authorId || '');
-const postUsername = post => String(post?.username || post?.author_username || post?.author?.username || '').replace(/^@/, '').toLowerCase();
+const postOwnerId = post => String(post?.profile_owner_id || post?.author_id || post?.user_id || post?.author?.id || post?.authorId || '');
+const postUsername = post => String(post?.profile_username || post?.username || post?.author_username || post?.author?.username || '').replace(/^@/, '').toLowerCase();
 const profileOwnsPost = (post, id, username) => {
   const ownerId = postOwnerId(post);
   const handle = String(username || '').replace(/^@/, '').toLowerCase();
@@ -356,13 +355,16 @@ async function loadProfilePosts(sb, id, username = '') {
       availableOptional.splice(availableOptional.indexOf(missing), 1);
     }
   }
-  if (String(id) === String(auth.userId || '')) {
-    try {
-      results.push(...await loadPublicPosts(sb));
-    } catch (error) {
-      publicPostsError = error;
-      console.warn('[profile] public posts could not be loaded.', error);
-    }
+  try {
+    const publicPosts = await loadPublicPosts(sb, { includeOwners: true });
+    const isCurrentProfile = String(id) === String(auth.userId || '');
+    results.push(...publicPosts.filter(post => {
+      const hasOwner = Boolean(postOwnerId(post) || postUsername(post));
+      return profileOwnsPost(post, id, username) || (!hasOwner && isCurrentProfile);
+    }));
+  } catch (error) {
+    publicPostsError = error;
+    console.warn('[profile] public posts could not be loaded.', error);
   }
   const merged = new Map(cachedProfilePosts(id, username, sb).map(post => [String(post.id), post]));
   for (const post of results) merged.set(String(post.id), post);
@@ -1383,12 +1385,10 @@ function tile(post, { open, menu }) {
   const caption = profileText(post?.caption) || profileText(post?.title) || profileText(post?.category) || t('post');
   const node = h('div', { class: `profile-tile ${kind}`, role: 'button', tabindex: '0', 'data-post': String(post?.id || ''), 'aria-label': caption || t('post') });
   if (kind === 'video') {
-    const still = post.public_post
-      ? (/\/storage\/v1\/object\/public\//i.test(url) ? `${url}.poster.jpg` : '')
-      : poster(url, 360);
+    const still = /\/storage\/v1\/object\/public\//i.test(url) ? `${url}.poster.jpg` : '';
     if (still) {
       const img = h('img', { alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' });
-      setProfileTileImage(img, still, post, { quality: 60, onFail: () => { img.remove(); node.classList.add('missing'); } });
+      setProfileTileImage(img, still, () => { img.remove(); node.classList.add('missing'); });
       node.append(img);
     } else {
       node.classList.add('missing');
@@ -1398,7 +1398,7 @@ function tile(post, { open, menu }) {
   } else if (kind === 'image') {
     const img = h('img', { alt: caption, loading: 'lazy', decoding: 'async', draggable: 'false' });
     const preview = post.public_post ? url : Array.isArray(post.media_preview_items) ? post.media_preview_items[0] || url : url;
-    setProfileTileImage(img, preview, post, { quality: 65, onFail: () => { node.classList.add('missing'); img.remove(); node.prepend(h('span', { class: 'tile-missing', 'aria-hidden': 'true' }, '🖼')); } });
+    setProfileTileImage(img, preview, () => { node.classList.add('missing'); img.remove(); node.prepend(h('span', { class: 'tile-missing', 'aria-hidden': 'true' }, '🖼')); });
     node.append(img);
   } else {
     node.append(h('p', {}, caption.slice(0, 140)));
@@ -1423,11 +1423,7 @@ function tile(post, { open, menu }) {
   return node;
 }
 
-function setProfileTileImage(img, url, post, { quality, onFail }) {
-  if (!post?.public_post) {
-    setImage(img, url, 360, { quality, onFail });
-    return;
-  }
+function setProfileTileImage(img, url, onFail) {
   if (!url) { onFail?.(); return; }
   img.onerror = () => {
     img.onerror = null;
