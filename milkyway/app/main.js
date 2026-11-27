@@ -454,12 +454,20 @@ function route() {
 addEventListener('popstate', route);
 
 document.addEventListener('click', event => {
-  const target = event.target.closest('[data-scope], [data-community], [data-nav], #liveEntry, #profileSearch');
+  const target = event.target.closest('[data-scope], [data-community], [data-nav], #liveEntry, #profileSearch, #addFriend');
   if (!target) return;
   if (target.dataset.scope) { if (shell.dataset.view !== 'home') showHome(); setScope(target.dataset.scope); return; }
   if (target.hasAttribute('data-community')) { openCommunity(); return; }
   if (target.id === 'liveEntry') { openLiveDirectory(); return; }
   if (target.id === 'profileSearch') { profileSearch().then(view => view.open()); return; }
+  if (target.id === 'addFriend') {
+    if (!requireLogin()) return;
+    followersView().then(view => view.open({ id: auth.userId }, { tab: 'suggested' })).catch(error => {
+      console.error('[connections] Suggested accounts could not be opened.', error);
+      toast(error?.message || t('retry'));
+    });
+    return;
+  }
   const nav = target.dataset.nav;
   if (nav === 'home') { if (shell.dataset.view === 'home') feedView.reload(); else showHome(); }
   else if (nav === 'explore') showExplore();
@@ -608,6 +616,8 @@ shell.toggleAttribute('data-muted', playback.muted);
 document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = t(node.dataset.i18n); });
 $('profileSearch').setAttribute('aria-label', t('searchPeople'));
 $('profileSearch').title = t('searchPeople');
+$('addFriend').setAttribute('aria-label', t('addFriend'));
+$('addFriend').title = t('addFriend');
 setScope(scope);
 route();
 const sharedPostId = new URLSearchParams(location.search).get('post');

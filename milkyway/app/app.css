@@ -52,7 +52,7 @@ svg { width: 1em; height: 1em; fill: currentColor; display: block; }
 /* ---- Top bar & bottom nav --------------------------------------------------------------------------------- */
 .topbar {
   position: fixed; z-index: 20; inset: 0 0 auto; height: var(--top-h); padding: env(safe-area-inset-top) 12px 0;
-  display: grid; grid-template-columns: 48px minmax(0, 1fr) 40px; align-items: center;
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) max-content 40px; align-items: center;
   background: linear-gradient(rgba(5,6,26,.6), transparent); pointer-events: none;
 }
 .topbar > * { pointer-events: auto; }
@@ -75,7 +75,16 @@ html[data-view="explore"] .topbar { display: none; }
 .icon-btn:hover { border-color: rgba(196,166,255,.58); background: linear-gradient(145deg, rgba(72,49,133,.92), rgba(12,17,53,.9)); box-shadow: 0 0 16px rgba(155,92,255,.22), inset 0 1px rgba(255,255,255,.14); }
 .icon-btn:active { transform: scale(.94); }
 .profile-search { border-color: rgba(190,174,255,.24); }
-.profile-search { justify-self: end; grid-column: 3; }
+.profile-search { justify-self: end; grid-column: 4; }
+.add-friend {
+  grid-column: 3; display: inline-flex; align-items: center; justify-self: center; gap: 6px;
+  min-height: 36px; padding: 0 10px; border: 1px solid rgba(190,174,255,.28); border-radius: 99px;
+  background: linear-gradient(145deg, rgba(33,28,76,.88), rgba(7,10,34,.84)); color: #f7f4ff;
+  font-size: 12px; font-weight: 720; white-space: nowrap; box-shadow: inset 0 1px rgba(255,255,255,.1), 0 4px 16px rgba(3,4,18,.28);
+}
+.add-friend svg { width: 15px; height: 15px; flex: none; }
+.add-friend:hover { border-color: rgba(196,166,255,.58); background: linear-gradient(145deg, rgba(72,49,133,.92), rgba(12,17,53,.9)); }
+.add-friend:active { transform: scale(.96); }
 .topbar .brand-mark { display: none; }
 .bottombar {
   position: fixed; z-index: 20; inset: auto 0 0; height: var(--nav-h); padding-bottom: env(safe-area-inset-bottom);
@@ -96,10 +105,15 @@ html[data-view="explore"] .topbar { display: none; }
 .create-orb .create-plus { position: relative; font-size: 22px; color: #fff; filter: drop-shadow(0 0 3px rgba(7,10,36,.9)) drop-shadow(0 0 6px rgba(255,255,255,.5)); }
 .nav-btn.create:active .create-orb { transform: scale(.92); }
 @media (max-width: 380px) {
-  .topbar { grid-template-columns: 44px minmax(0, 1fr) 34px; padding-left: 8px; padding-right: 8px; }
+  .topbar { grid-template-columns: 44px minmax(0, 1fr) 34px 34px; padding-left: 8px; padding-right: 8px; }
   .scope-tabs { gap: 4px; }
   .scope-tabs button { font-size: 11px; letter-spacing: -.025em; }
   .profile-search { width: 34px; height: 34px; }
+  .add-friend { width: 32px; min-height: 32px; padding: 0; }
+}
+@media (max-width: 440px) {
+  .add-friend { width: 34px; min-height: 34px; padding: 0; }
+  .add-friend span { display: none; }
 }
 /* ---- Milky Way atmosphere & watermark ------------------------------------------------------------------------ */
 .cosmos-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none;
