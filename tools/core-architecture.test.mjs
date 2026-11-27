@@ -54,14 +54,21 @@ test('Nova and profile taps route to an open profile sheet for IDs and handles',
   const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
   const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
   const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
+  const sheet = readFileSync(new URL('../milkyway/app/ui/sheet.js', import.meta.url), 'utf8');
   assert.match(main, /else if \(nav === 'me'\) openProfile\(\)/);
   assert.match(main, /profiles\.matching\(handle\)\.find/);
   assert.match(main, /\.eq\('username', handle\)\.maybeSingle\(\)/);
-  assert.match(main, /setNav\('me'\)/);
-  assert.match(main, /shell\.dataset\.view = context\.view/);
+  assert.match(main, /button\.dataset\.nav === 'me'/);
+  assert.match(main, /shell\.dataset\.view = 'home'/);
+  assert.doesNotMatch(main, /function setNav\(name\) \{[^}]*shell\.dataset\.view/);
+  assert.match(main, /hasOpenSheet\(\) \|\| Boolean\(document\.querySelector\('\.pv-layer:not\(\[hidden\]\)'\)\)/);
   assert.match(feed, /if \(act === 'profile'\)[\s\S]*post\.profile_owner_id[\s\S]*post\.profile_username/);
+  assert.match(feed, /mw:sheetchange/);
+  assert.match(feed, /const retryable = kind === 'offline' \|\| kind === 'feedLoadFailed'/);
   assert.match(profile, /this\.hooks\.onOpen\?\.\(\)/);
   assert.match(profile, /this\.hooks\.onClose\?\.\(\)/);
+  assert.match(profile, /h\('p', \{\}, t\('connectionLost'\)\)/);
+  assert.match(sheet, /dispatchEvent\(new Event\('mw:sheetchange'\)\)/);
 });
 
 test('group management schema and UI implement guarded joins, invitations and co-admin tools', () => {

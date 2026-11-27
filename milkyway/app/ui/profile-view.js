@@ -714,8 +714,8 @@ export class ProfileView {
     this.sheet.panel.classList.toggle('profile-sheet-fullscreen', fullscreen);
     this.sheet.title = this.own ? t('me') : (profileText(candidate?.name || profiles.peek(id)?.name) || t('profile'));
     this.sheet.panel.setAttribute('aria-label', this.sheet.title);
-    this.hooks.onOpen?.();
     this.sheet.open();
+    this.hooks.onOpen?.();
     try {
       this.#render({ profile: candidate || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });
     } catch (error) {
@@ -728,7 +728,7 @@ export class ProfileView {
 
   #showLoadError(id) {
     this.content.replaceChildren(h('div', { class: 'empty-card profile-load-error' },
-      h('p', {}, t('retry')),
+      h('p', {}, t('connectionLost')),
       h('button', { class: 'pill-btn', type: 'button', onclick: () => { void this.#load(id); } }, t('retry'))));
   }
 
