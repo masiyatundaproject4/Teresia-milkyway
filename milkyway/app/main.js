@@ -45,11 +45,8 @@ const notificationsView = lazy(() => import('./ui/notifications-view.js').then(m
   onOpenCall: callId => callView().then(calls => calls.handleNotification(callId)),
 })));
 function openCommunity() {
-  if (!requireLogin()) return;
-  document.querySelectorAll('.scope-tabs [role="tab"]').forEach(button => {
-    button.setAttribute('aria-selected', String(button.hasAttribute('data-community')));
-  });
-  followersView().then(view => view.open({ id: auth.userId, name: auth.name }, { tab: 'suggested' }));
+  if (shell.dataset.view !== 'home') showHome();
+  setScope('community');
 }
 const callView = lazy(() => import('./ui/call-view.js').then(m => m.calls));
 const novaMenu = lazy(() => import('./ui/settings-view.js').then(m => new m.NovaMenu({
@@ -221,13 +218,16 @@ const feedView = new FeedView($('feedView'), {
   openPost,
 });
 
-let scope = auth.signedIn() && localStorage.getItem('mw_core_scope') === 'following' ? 'following' : 'foryou';
+const savedScope = localStorage.getItem('mw_core_scope');
+let scope = savedScope === 'community' ? 'community'
+  : auth.signedIn() && savedScope === 'following' ? 'following' : 'foryou';
 function setScope(next) {
-  if (next === 'following' && !requireLogin()) return;
+  if (!['foryou', 'following', 'community'].includes(next)) return;
   scope = next;
   try { localStorage.setItem('mw_core_scope', next); } catch {}
   document.querySelectorAll('.scope-tabs [role="tab"]').forEach(button => {
-    button.setAttribute('aria-selected', String(button.dataset.scope === next));
+    button.setAttribute('aria-selected', String(button.dataset.scope === next
+      || (next === 'community' && button.hasAttribute('data-community'))));
   });
   feedView.show(next);
 }

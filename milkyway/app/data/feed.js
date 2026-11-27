@@ -1,4 +1,4 @@
-// Feed repository: cached pages per scope ("foryou" / "following"), background refresh, infinite paging,
+// Feed repository: cached pages per scope, background refresh, infinite paging,
 // and optimistic like / save / follow that survive going offline.
 import { config } from '../config.js';
 import { api, rest, auth, supabase } from '../core/net.js';
@@ -15,12 +15,13 @@ const pageUrl = (scope, before) => {
 };
 
 async function fetchPage(scope, before) {
+  if (scope !== 'foryou' && !auth.userId) return { posts: [], next: null };
   const page = await api(pageUrl(scope, before), { timeout: 9000 });
   let posts = Array.isArray(page?.posts) ? page.posts : [];
   if (scope === 'foryou' && !before) {
     try {
       const sb = await supabase();
-      const publicPosts = await loadPublicPosts(sb);
+      const publicPosts = await loadPublicPosts(sb, { publishedOnly: true });
       posts = [...posts, ...publicPosts].sort((a, b) => Date.parse(b.createdAt || b.created_at || '') - Date.parse(a.createdAt || a.created_at || ''));
     } catch (error) {
       console.warn('[feed] public posts could not be loaded.', error);
@@ -39,27 +40,29 @@ export async function fetchSharedPost(id) {
 }
 
 const feeds = new Map();
+const feedKey = scope => `${auth.userId || 'guest'}:${scope}`;
 let postsChannel = null;
 let postsStart = null;
 let postsRefresh = 0;
 let postsPoll = 0;
 export function feed(scope = 'foryou') {
-  if (feeds.has(scope)) return feeds.get(scope);
+  const key = feedKey(scope);
+  if (feeds.has(key)) return feeds.get(key);
   // The device keeps only the newest posts; the cursor is moved so paging resumes right after them.
   const persist = value => {
     const limit = config.feed.cacheLimit;
     if (!value?.posts || value.posts.length <= limit) return value;
     return { posts: value.posts.slice(0, limit), next: value.posts[limit - 1].createdAt };
   };
-  // A refresh puts the newest posts first and keeps the pages already loaded (and their cursor) behind them.
+  // For You retains its loaded pages on refresh; scoped feeds replace data so unfollowed authors are removed.
   const refreshFirstPage = () => fetchPage(scope).then(page => {
     const old = source.value;
-    if (!old?.posts?.length) return page;
+    if (scope !== 'foryou' || !old?.posts?.length) return page;
     const fresh = new Map(page.posts.map(post => [post.id, post]));
     const rest = old.posts.filter(post => !fresh.has(post.id));
     return { posts: [...page.posts, ...rest], next: rest.length ? old.next : page.next };
   });
-  const source = resource(`feed:${scope}`, refreshFirstPage, { maxAge: 15_000, persist });
+  const source = resource(`feed:${key}`, refreshFirstPage, { maxAge: 15_000, persist });
   let loadingMore = null;
   const api = {
     source,
@@ -78,7 +81,7 @@ export function feed(scope = 'foryou') {
       return loadingMore;
     },
   };
-  feeds.set(scope, api);
+  feeds.set(key, api);
   return api;
 }
 
@@ -91,7 +94,7 @@ export function watchPosts(getScope = () => 'foryou') {
     const refresh = () => {
       clearTimeout(postsRefresh);
       postsRefresh = setTimeout(() => {
-        const active = feeds.get(getScope())?.source;
+        const active = feed(getScope())?.source;
         active?.refresh().catch(error => console.warn('[feed] realtime refresh failed', error));
       }, 350);
     };

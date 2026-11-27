@@ -3,7 +3,7 @@
 // → saves). Here they run server-side in parallel, so a phone on a slow network waits for a single round trip.
 // Everything still runs as the caller (their JWT), so row-level security stays the final judge.
 //
-//   GET /api/milkyway-feed?action=page&scope=foryou|following&before=<ISO time>&limit=12&media=video
+//   GET /api/milkyway-feed?action=page&scope=foryou|following|community&before=<ISO time>&limit=12&media=video
 //   → { posts: [{ id, author, caption, media, createdAt, likes, comments, liked, saved }], next: <ISO time> | null }
 //   POST /api/milkyway-feed?action=save { post, on }   (signed in) → { saved }
 //   GET  /api/milkyway-feed?action=saved               (signed in) → { saved: [{ postId, savedAt }] }
@@ -29,10 +29,10 @@ const mediaKind = (url, type) => {
   return VIDEO_FILE.test(String(url)) ? 'video' : 'image';
 };
 
-async function follows(ctx, filter) {
+async function follows(ctx, filter, column = 'following_id') {
   for (const table of FOLLOW_TABLES) {
-    const rows = await quiet(ctx.rest(`${table}?${filter}&select=following_id&limit=2000`));
-    if (rows) return new Set(rows.map(row => String(row.following_id)));
+    const rows = await quiet(ctx.rest(`${table}?${filter}&select=${column}&limit=2000`));
+    if (rows) return new Set(rows.map(row => String(row[column] || '')).filter(Boolean));
   }
   return new Set();
 }
@@ -40,7 +40,8 @@ async function follows(ctx, filter) {
 async function page({ ctx, query }) {
   const me = ctx.user?.id || null;
   const limit = clamp(query.limit, 4, 30, 12);
-  const scope = query.scope === 'following' && me ? 'following' : 'foryou';
+  const scope = ['following', 'community'].includes(query.scope) ? query.scope : 'foryou';
+  if (scope !== 'foryou' && !me) return { posts: [], next: null };
   // Over-fetch a little so privacy filtering rarely leaves a short page.
   const filters = [`select=${POST_FIELDS}`, `order=created_at.desc`, `limit=${limit * 2}`];
   filters.push(`or=(scheduled_at.is.null,scheduled_at.lte.${encodeURIComponent(new Date().toISOString())})`);
@@ -50,10 +51,17 @@ async function page({ ctx, query }) {
   else if (query.media === 'visual') filters.push('media_url=not.is.null');
 
   let followed = null;
-  if (scope === 'following') {
+  if (scope === 'following' || scope === 'community') {
     followed = await follows(ctx, `follower_id=${eq(me)}`);
-    const authors = [...followed, me].filter(isUuid).slice(0, 400);
-    filters.push(`author_id=${inList(authors)}`);
+    const authors = [...followed];
+    if (scope === 'community') {
+      // Community is the combined network of accounts the viewer follows and their followers.
+      const followers = await follows(ctx, `following_id=${eq(me)}`, 'follower_id');
+      authors.push(...followers);
+    }
+    const uniqueAuthors = [...new Set(authors)].filter(author => author !== me && isUuid(author)).slice(0, 400);
+    if (!uniqueAuthors.length) return { posts: [], next: null };
+    filters.push(`author_id=${inList(uniqueAuthors)}`);
   }
 
   let rows;

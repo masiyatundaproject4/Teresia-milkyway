@@ -365,10 +365,10 @@ function fakeSupabase(routes) {
   return calls;
 }
 
-async function call(query) {
+async function call(query, headers = {}) {
   let status = 200, payload;
   const res = { headersSent: false, setHeader() { return res; }, status(code) { status = code; return res; }, json(value) { payload = value; res.headersSent = true; return res; } };
-  await feed({ method: 'GET', headers: {}, query }, res);
+  await feed({ method: 'GET', headers, query }, res);
   return { status, payload };
 }
 
@@ -613,6 +613,41 @@ test('feed cursor resumes right after the last returned post', async () => {
   assert.equal(payload.next, payload.posts[3].createdAt);
 });
 
+test('Orbit Following returns an empty page without an account or followed creators', async () => {
+  let calls = fakeSupabase([]);
+  let result = await call({ action: 'page', scope: 'following', limit: '5' });
+  assert.deepEqual(result.payload, { posts: [], next: null });
+  assert.equal(calls.some(url => url.includes('/rest/v1/mw_posts?')), false);
+
+  calls = fakeSupabase([
+    ['/auth/v1/user', { id: A }],
+    ['/rest/v1/mw_follows?', []],
+  ]);
+  result = await call({ action: 'page', scope: 'following', limit: '5' }, { authorization: 'Bearer test-token' });
+  assert.deepEqual(result.payload, { posts: [], next: null });
+  assert.equal(calls.some(url => url.includes('/rest/v1/mw_posts?')), false);
+});
+
+test('Orbit Community loads posts from followers and followed creators, not the global feed', async () => {
+  const follower = P(20);
+  const followed = P(21);
+  const calls = fakeSupabase([
+    ['/auth/v1/user', { id: A }],
+    ['/rest/v1/mw_follows?', address => address.includes(`follower_id=eq.${A}`)
+      ? [{ following_id: followed }] : [{ follower_id: follower }]],
+    ['/rest/v1/mw_posts?', [
+      { id: P(1), author_id: follower, caption: 'Follower post', created_at: '2026-11-14T10:00:00Z' },
+      { id: P(2), author_id: followed, caption: 'Followed post', created_at: '2026-11-14T09:00:00Z' },
+    ]],
+    ['/rpc/mw_privacy_flags', {}],
+  ]);
+  const result = await call({ action: 'page', scope: 'community', limit: '5' }, { authorization: 'Bearer test-token' });
+  const postsQuery = calls.find(url => url.includes('/rest/v1/mw_posts?'));
+  assert.equal(result.status, 200);
+  assert.match(postsQuery, new RegExp(`author_id=in\\.\\(${followed},${follower}\\)`));
+  assert.deepEqual(result.payload.posts.map(post => post.author.id), [follower, followed]);
+});
+
 test('Orbit feed falls back to core post columns when slideshow columns are absent', async () => {
   const calls = [];
   globalThis.fetch = async url => {
@@ -679,10 +714,12 @@ test('Orbit feed subscribes to global post changes and Supabase publishes mw_pos
   const migration = readFileSync(new URL('../supabase/migrations/20261116_milkyway_orbit_feed_realtime.sql', import.meta.url), 'utf8');
   const repository = readFileSync(new URL('../api/milkyway-feed.js', import.meta.url), 'utf8');
   const view = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
   const sync = readFileSync(new URL('../milkyway/app/core/sync.js', import.meta.url), 'utf8');
   assert.match(feed, /table:\s*'mw_posts'/);
   assert.match(feed, /active\?\.refresh\(\)/);
-  assert.match(repository, /scope === 'following'[\s\S]*author_id=\$\{inList\(authors\)\}/);
+  assert.match(repository, /scope === 'following' \|\| scope === 'community'[\s\S]*author_id=\$\{inList\(uniqueAuthors\)\}/);
+  assert.match(repository, /scope === 'community'[\s\S]*follower_id/);
   assert.match(repository, /public feed includes every author|POST_FIELDS/);
   assert.match(migration, /using \(public\.mw_profile_posts_visible\(author_id::text\)\)/);
   assert.doesNotMatch(migration, /using\s*\(true\)/i, 'public posts must continue to respect account privacy');
@@ -692,6 +729,10 @@ test('Orbit feed subscribes to global post changes and Supabase publishes mw_pos
   assert.match(migration, /alter publication supabase_realtime add table public\.mw_posts/i);
   assert.match(view, /source\.load\(\)\.then\(\(\) => source\.refresh\(\)\)/);
   assert.match(view, /source\?\.source\.error[\s\S]*feedLoadFailed/);
+  assert.match(view, /if \(this\.scope === 'foryou'\) items = weave\(items, this\.promo\)/);
+  assert.match(feed, /loadPublicPosts\(sb, \{ publishedOnly: true \}\)/);
+  assert.match(main, /setScope\('community'\)/);
+  assert.match(main, /button\.dataset\.scope === next[\s\S]*button\.hasAttribute\('data-community'\)/);
   assert.match(sync, /get error\(\) \{ return error; \}/);
 });
 

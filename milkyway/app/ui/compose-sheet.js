@@ -2068,7 +2068,7 @@ export class ComposeSheet {
       this.scheduleToggle.checked = false;
       this.scheduleDate.value = '';
       this.#paintSchedule();
-      for (const scope of ['foryou', 'following']) feed(scope).refresh().catch(() => {});
+      for (const scope of ['foryou', 'following', 'community']) feed(scope).refresh().catch(() => {});
       this.onPublished?.();
     } catch (error) {
       const failedPhase = error?.publishPhase || phase;

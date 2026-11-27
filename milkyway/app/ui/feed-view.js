@@ -69,7 +69,7 @@ export class FeedView {
     bus.on('auth', () => this.#loadPromoted());
   }
 
-  /** Switches between "foryou" and "following". Cached posts paint immediately. */
+  /** Switches feed scope. Cached posts paint immediately. */
   show(scope) {
     idle(() => watchPosts(() => this.scope).catch(error => console.warn('[feed] realtime setup failed', error)), 1800);
     if (scope === this.scope) { this.reload(); return; }
@@ -114,7 +114,7 @@ export class FeedView {
       const known = new Set(kept.map(post => post.id));
       items = [...kept, ...incoming.filter(post => !known.has(post.id))];
     }
-    items = weave(items, this.promo);
+    if (this.scope === 'foryou') items = weave(items, this.promo);
     this.pager.setItems(items);
     if (items.length) this.#setStatus(null);
   }
