@@ -13,7 +13,7 @@ import { postShareResponse } from '../api/_lib/post-share.js';
 import { assertRoomAccess } from '../milkyway/app/core/livekit-access.js';
 import { identifyMediaFile, mediaInfo, openFilePicker } from '../milkyway/app/core/media-files.js';
 import { checkDeployment } from '../milkyway/app/core/update-check.js';
-import { loadPublicPosts } from '../milkyway/app/data/public-posts.js';
+import { loadPublicPosts, publicPostMatchesProfile } from '../milkyway/app/data/public-posts.js';
 
 const A = '11111111-1111-4111-8111-111111111111'; // public author
 const B = '22222222-2222-4222-8222-222222222222'; // private author
@@ -1943,7 +1943,7 @@ test('profile public posts query all authors with published status enabled', asy
         range() {
           return Promise.resolve({
             data: [
-              { id: 'published', published: true, media_url: 'https://cdn.example.test/published.jpg' },
+              { id: 'published', published: true, author_id: A, author_username: 'alice', media_url: 'https://cdn.example.test/published.jpg' },
               { id: 'draft', published: false, media_url: 'https://cdn.example.test/draft.jpg' },
             ].filter(post => post.published === filter?.[1]),
             error: null,
@@ -1955,7 +1955,14 @@ test('profile public posts query all authors with published status enabled', asy
   const posts = await loadPublicPosts(sb, { publishedOnly: true });
   assert.deepEqual(filter, ['published', true]);
   assert.equal(selected.split(',').includes('published'), true);
+  assert.equal(selected.split(',').includes('author_id'), true);
   assert.deepEqual(posts.map(post => post.public_post_id), ['published']);
+  assert.equal(posts[0].profile_owner_id, A);
+  assert.equal(publicPostMatchesProfile(posts[0], { id: A }), true);
+  assert.equal(publicPostMatchesProfile(posts[0], { id: B, username: 'alice' }), true);
+  assert.equal(publicPostMatchesProfile({ public_post: true }, { id: A }), false);
+  assert.equal(publicPostMatchesProfile({ owner_id: B }, { id: A, username: 'alice' }), false);
+  assert.equal(publicPostMatchesProfile({ handle: '@alice' }, { id: A, username: 'alice' }), true);
 });
 
 test('Nova profile merges public Orbit posts into the grid and counter data', () => {
@@ -1963,7 +1970,9 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   const publicPosts = readFileSync(new URL('../milkyway/app/data/public-posts.js', import.meta.url), 'utf8');
   const connections = readFileSync(new URL('../milkyway/app/ui/followers-view.js', import.meta.url), 'utf8');
 
-  assert.match(profile, /String\(id\) === String\(auth\.userId \|\| ''\)/);
+  assert.doesNotMatch(profile, /public_post === true && String\(id\) === String\(auth\.userId/);
+  assert.match(profile, /profileOwnsPost\(post, id, username\)/);
+  assert.match(profile, /owner_id/);
   assert.match(profile, /results\.push\(\.\.\.await loadPublicPosts\(sb, \{ publishedOnly: true \}\)\)/);
   assert.match(profile, /this\.tabs\?\.querySelectorAll\('\[data-profile-tab\]'\)\.forEach/);
   assert.match(profile, /tabs\.addEventListener\('click'/);
@@ -1991,6 +2000,8 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.doesNotMatch(publicPosts, /\.eq\(['"](?:user_id|author_id)['"]/);
   assert.match(publicPosts, /query = query\.eq\('published', true\)/);
   assert.match(publicPosts, /PUBLIC_POST_OPTIONAL_COLUMNS/);
+  assert.match(publicPosts, /'user_id', 'author_id', 'owner_id', 'username', 'handle', 'author_username', 'author_handle'/);
+  assert.match(publicPosts, /profile_owner_id: row\.author_id \|\| row\.user_id \|\| row\.owner_id/);
   assert.match(profile, /name: profileText\(profile\.name\)/);
   assert.match(profile, /bio: profileText\(profile\.bio\)/);
   assert.match(connections, /for \(const id of ids\) \{\s*if \(peopleById\.has\(id\)\) continue;/);

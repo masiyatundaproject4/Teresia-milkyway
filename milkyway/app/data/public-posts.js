@@ -1,6 +1,7 @@
 const PUBLIC_POST_COLUMNS = [
   'id', 'created_at', 'title', 'category', 'description', 'media_url', 'media_type',
   'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published',
+  'user_id', 'author_id', 'owner_id', 'username', 'handle', 'author_username', 'author_handle',
 ];
 const PUBLIC_POST_OPTIONAL_COLUMNS = PUBLIC_POST_COLUMNS.filter(column => column !== 'id').concat('extra_info');
 const PUBLIC_POST_PAGE_SIZE = 500;
@@ -11,6 +12,37 @@ const text = value => {
   if (/^(?:null|undefined)$/i.test(cleaned)) return '';
   return cleaned.replace(/\b(?:null|undefined)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
 };
+
+const identityText = value => text(value).replace(/^@+/, '').toLowerCase();
+const identityValues = values => values.map(value => {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  return text(String(value));
+}).filter(Boolean);
+
+export function publicPostMatchesProfile(post, profile = {}) {
+  if (!post || typeof post !== 'object') return false;
+  const author = post.author && typeof post.author === 'object' ? post.author : {};
+  const owner = post.owner && typeof post.owner === 'object' ? post.owner : {};
+  const profileAuthor = profile.author && typeof profile.author === 'object' ? profile.author : {};
+  const profileOwner = profile.owner && typeof profile.owner === 'object' ? profile.owner : {};
+  const postIds = identityValues([
+    post.profile_owner_id, post.owner_id, post.author_id, post.user_id, post.authorId, author.id, owner.id,
+  ]).map(value => value.toLowerCase());
+  const profileIds = identityValues([
+    profile.id, profile.user_id, profile.author_id, profile.owner_id, profileAuthor.id, profileOwner.id,
+  ]).map(value => value.toLowerCase());
+  if (postIds.some(value => profileIds.includes(value))) return true;
+
+  const postHandles = [
+    post.profile_username, post.username, post.handle, post.author_username, post.author_handle,
+    post.authorUsername, post.authorHandle, author.username, author.handle, owner.username, owner.handle,
+  ].map(identityText).filter(Boolean);
+  const profileHandles = [
+    profile.username, profile.handle, profile.author_username, profile.author_handle,
+    profileAuthor.username, profileAuthor.handle, profileOwner.username, profileOwner.handle,
+  ].map(identityText).filter(Boolean);
+  return postHandles.some(value => profileHandles.includes(value));
+}
 
 export function portfolioMediaUrl(sb, row) {
   const mediaUrl = text(row.media_url);
@@ -63,6 +95,8 @@ export async function loadPublicPosts(sb, { publishedOnly = false } = {}) {
     const description = (swahili ? text(row.description_sw) || text(row.description_en) : text(row.description_en) || text(row.description_sw)) || text(row.description);
     return {
       ...row,
+      profile_owner_id: row.author_id || row.user_id || row.owner_id || '',
+      profile_username: row.username || row.handle || row.author_username || row.author_handle || '',
       id: `public:${String(row.id)}`,
       public_post_id: String(row.id),
       public_post: true,

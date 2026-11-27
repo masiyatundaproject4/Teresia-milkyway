@@ -6,7 +6,7 @@ import { config } from '../config.js';
 import { identifyMediaFile, openFilePicker } from '../core/media-files.js';
 import { optimizeImage } from '../core/media-optimizer.js';
 import { profiles } from '../data/profiles.js';
-import { loadPublicPosts, portfolioMediaUrl } from '../data/public-posts.js';
+import { loadPublicPosts, portfolioMediaUrl, publicPostMatchesProfile } from '../data/public-posts.js';
 import { actions, feed } from '../data/feed.js';
 import { Sheet } from './sheet.js';
 import { h, icon, avatar, count, toast } from './dom.js';
@@ -43,7 +43,10 @@ function cacheCover(id, url) {
 }
 
 const PROFILE_POST_REQUIRED = ['id', 'caption', 'media_url', 'media_type', 'created_at'];
-const PROFILE_POST_OPTIONAL = ['author_id', 'user_id', 'username', 'author_username', 'scheduled_at', 'slideshow_style', 'audio_url', 'media_items', 'media_preview_items', 'storage_path'];
+const PROFILE_POST_OPTIONAL = [
+  'author_id', 'user_id', 'owner_id', 'username', 'handle', 'author_username', 'author_handle',
+  'scheduled_at', 'slideshow_style', 'audio_url', 'media_items', 'media_preview_items', 'storage_path',
+];
 const PROFILE_POST_PAGE_SIZE = 500;
 const isPublicProfilePost = post => post?.public_post === true;
 const isPostsTabPost = post => isPublicProfilePost(post) || !post?.audience || post.audience === 'everyone';
@@ -297,21 +300,14 @@ function missingProfileColumn(error, columns) {
   return columns.find(column => new RegExp(`\\b${column}\\b`, 'i').test(message)) || null;
 }
 
-const postOwnerId = post => String(post?.author_id || post?.user_id || post?.author?.id || post?.authorId || '');
-const postUsername = post => String(post?.username || post?.author_username || post?.author?.username || '').replace(/^@/, '').toLowerCase();
-const profileOwnsPost = (post, id, username) => {
-  const ownerId = postOwnerId(post);
-  const handle = String(username || '').replace(/^@/, '').toLowerCase();
-  return ownerId === String(id) || Boolean(handle && (postUsername(post) === handle || ownerId.replace(/^@/, '').toLowerCase() === handle));
-};
+const profileOwnsPost = (post, id, username) => publicPostMatchesProfile(post, { id, username });
 
 function cachedProfilePosts(id, username, sb = null) {
   const cached = ['foryou', 'following'].flatMap(scope => {
     const posts = feed(scope).source.value?.posts;
     return Array.isArray(posts) ? posts : [];
   });
-  return cached.filter(post => post?.id && (profileOwnsPost(post, id, username)
-    || (post.public_post === true && String(id) === String(auth.userId || ''))))
+  return cached.filter(post => post?.id && profileOwnsPost(post, id, username))
     .map(post => normalizeProfilePost(post, id, sb));
 }
 
@@ -362,8 +358,11 @@ async function loadProfilePosts(sb, id, username = '') {
     console.warn('[profile] public posts could not be loaded.', error);
   }
   const merged = new Map(cachedProfilePosts(id, username, sb).map(post => [String(post.id), post]));
-  for (const post of results) merged.set(String(post.id), post);
-  const data = [...merged.values()].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''));
+  for (const post of results) {
+    if (profileOwnsPost(post, id, username)) merged.set(String(post.id), post);
+  }
+  const data = [...merged.values()].filter(post => profileOwnsPost(post, id, username))
+    .sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''));
   return { data, error: data.length ? null : lastError || publicPostsError };
 }
 
@@ -388,7 +387,7 @@ function normalizeProfilePost(row, ownerId = '', sb = null) {
     || (/\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i.test(mediaUrl) ? 'video' : mediaUrl ? 'image' : null);
   return {
     ...row,
-    author_id: row.public_post ? '' : row.author_id || row.user_id || row.author?.id || row.authorId || ownerId,
+    author_id: row.public_post ? '' : row.author_id || row.user_id || row.owner_id || row.author?.id || row.authorId || ownerId,
     audience: row.public_post ? 'everyone' : row.audience,
     username: row.username || row.author_username || row.author?.username || '',
     created_at: row.created_at || row.createdAt || '',
