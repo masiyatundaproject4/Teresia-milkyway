@@ -713,6 +713,7 @@ export class ProfileView {
     this.sheet.panel.classList.toggle('profile-sheet-fullscreen', fullscreen);
     this.sheet.title = this.own ? t('me') : (profileText(candidate?.name || profiles.peek(id)?.name) || t('profile'));
     this.sheet.panel.setAttribute('aria-label', this.sheet.title);
+    this.sheet.open();
     try {
       this.#render({ profile: candidate || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });
     } catch (error) {
@@ -720,7 +721,6 @@ export class ProfileView {
       this.#showLoadError(id);
     }
     this.#pushProfileHistory();
-    this.sheet.open();
     void this.#load(id);
   }
 

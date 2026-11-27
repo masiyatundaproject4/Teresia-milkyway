@@ -24,7 +24,8 @@ export class Sheet {
     if (document.body.lastElementChild !== this.root) document.body.append(this.root);
     clearTimeout(this.hideTimer);
     this.root.hidden = false;
-    requestAnimationFrame(() => this.root.classList.add('open'));
+    void this.panel.offsetHeight;
+    this.root.classList.add('open');
     if (this.autoFocus) setTimeout(() => this.panel.querySelector('input, textarea, button')?.focus({ preventScroll: true }), 220);
   }
   close() {
