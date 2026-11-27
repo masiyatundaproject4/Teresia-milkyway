@@ -1,8 +1,12 @@
 const PUBLIC_POST_COLUMNS = [
   'id', 'created_at', 'title', 'category', 'description', 'media_url', 'media_type',
   'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published',
-].join(',');
-const PUBLIC_POST_OPTIONAL_COLUMNS = ['extra_info'];
+];
+const PUBLIC_POST_REQUIRED_COLUMNS = ['id'];
+const PUBLIC_POST_OPTIONAL_COLUMNS = [
+  ...PUBLIC_POST_COLUMNS.filter(column => !PUBLIC_POST_REQUIRED_COLUMNS.includes(column)),
+  'extra_info',
+];
 const PUBLIC_POST_PAGE_SIZE = 500;
 
 const text = value => {
@@ -33,11 +37,10 @@ export async function loadPublicPosts(sb) {
   const data = [];
   let offset = 0;
   while (true) {
-    const columns = [...PUBLIC_POST_COLUMNS, ...fields].join(',');
-    const result = await sb.from('posts')
-      .select(columns)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + PUBLIC_POST_PAGE_SIZE - 1);
+    const columns = [...PUBLIC_POST_REQUIRED_COLUMNS, ...fields].join(',');
+    let query = sb.from('posts').select(columns);
+    query = query.order(fields.includes('created_at') ? 'created_at' : 'id', { ascending: false });
+    const result = await query.range(offset, offset + PUBLIC_POST_PAGE_SIZE - 1);
     if (!result.error) {
       const page = Array.isArray(result.data) ? result.data : [];
       data.push(...page);

@@ -1380,13 +1380,15 @@ export class ProfileView {
 function tile(post, { open, menu }) {
   const kind = postKind(post);
   const url = typeof post?.media_url === 'string' ? post.media_url : '';
-  const caption = profileText(post?.caption);
+  const caption = profileText(post?.caption) || profileText(post?.title) || profileText(post?.category) || t('post');
   const node = h('div', { class: `profile-tile ${kind}`, role: 'button', tabindex: '0', 'data-post': String(post?.id || ''), 'aria-label': caption || t('post') });
   if (kind === 'video') {
-    const still = poster(url, 360);
+    const still = post.public_post
+      ? (/\/storage\/v1\/object\/public\//i.test(url) ? `${url}.poster.jpg` : '')
+      : poster(url, 360);
     if (still) {
       const img = h('img', { alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' });
-      setImage(img, still, 360, { quality: 60, onFail: () => { img.remove(); node.classList.add('missing'); } });
+      setProfileTileImage(img, still, post, { quality: 60, onFail: () => { img.remove(); node.classList.add('missing'); } });
       node.append(img);
     } else {
       node.classList.add('missing');
@@ -1395,8 +1397,8 @@ function tile(post, { open, menu }) {
     node.append(h('span', { class: 'tile-badge', html: icon.play, 'aria-hidden': 'true' }));
   } else if (kind === 'image') {
     const img = h('img', { alt: caption, loading: 'lazy', decoding: 'async', draggable: 'false' });
-    const preview = Array.isArray(post.media_preview_items) ? post.media_preview_items[0] || url : url;
-    setImage(img, preview, 360, { quality: 65, onFail: () => { node.classList.add('missing'); img.remove(); node.prepend(h('span', { class: 'tile-missing', 'aria-hidden': 'true' }, '🖼')); } });
+    const preview = post.public_post ? url : Array.isArray(post.media_preview_items) ? post.media_preview_items[0] || url : url;
+    setProfileTileImage(img, preview, post, { quality: 65, onFail: () => { node.classList.add('missing'); img.remove(); node.prepend(h('span', { class: 'tile-missing', 'aria-hidden': 'true' }, '🖼')); } });
     node.append(img);
   } else {
     node.append(h('p', {}, caption.slice(0, 140)));
@@ -1419,4 +1421,17 @@ function tile(post, { open, menu }) {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
   });
   return node;
+}
+
+function setProfileTileImage(img, url, post, { quality, onFail }) {
+  if (!post?.public_post) {
+    setImage(img, url, 360, { quality, onFail });
+    return;
+  }
+  if (!url) { onFail?.(); return; }
+  img.onerror = () => {
+    img.onerror = null;
+    onFail?.();
+  };
+  img.src = url;
 }

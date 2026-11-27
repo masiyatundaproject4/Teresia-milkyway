@@ -1894,6 +1894,42 @@ test('public profile post loader fetches every page', async () => {
   assert.deepEqual(offsets, [[0, 499], [500, 999]]);
 });
 
+test('public posts retry missing optional columns and retain direct media URLs', async () => {
+  const missingColumns = ['created_at', 'title', 'title_sw', 'extra_info'];
+  const selections = [];
+  const orders = [];
+  let selected = '';
+  const sb = {
+    from(table) {
+      assert.equal(table, 'posts');
+      return {
+        select(columns) { selected = columns; selections.push(columns); return this; },
+        order(column, options) { orders.push(column); assert.deepEqual(options, { ascending: false }); return this; },
+        range() {
+          const missing = missingColumns.find(column => selected.split(',').includes(column));
+          if (missing) return Promise.resolve({ data: null, error: { message: `column posts.${missing} does not exist` } });
+          return Promise.resolve({
+            data: [{ id: 'nullable', title: null, category: null, description: null, media_url: 'https://cdn.example.test/photo.jpg', media_type: null, storage_path: null, published: null }],
+            error: null,
+          });
+        },
+      };
+    },
+  };
+
+  const posts = await loadPublicPosts(sb);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].media_url, 'https://cdn.example.test/photo.jpg');
+  assert.equal(posts[0].media_type, 'image');
+  assert.equal(posts[0].caption, '');
+  assert.equal(posts[0].published, null);
+  assert.equal(selections.length, missingColumns.length + 1);
+  assert.equal(selections.at(-1).includes('created_at'), false);
+  assert.equal(selections.at(-1).includes('title_sw'), false);
+  assert.equal(selections.at(-1).includes('extra_info'), false);
+  assert.deepEqual(orders.slice(0, 2), ['created_at', 'id']);
+});
+
 test('Nova profile merges public Orbit posts into the grid and counter data', () => {
   const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
   const publicPosts = readFileSync(new URL('../milkyway/app/data/public-posts.js', import.meta.url), 'utf8');
@@ -1914,6 +1950,9 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.doesNotMatch(profile, /sort\(\(a, b\) => Date\.parse\(b\.created_at \|\| ''\) - Date\.parse\(a\.created_at \|\| ''\)\)\.slice\(0, 100\)/);
   assert.match(profile, /audience: row\.public_post \? 'everyone' : row\.audience/);
   assert.match(profile, /\^\(\?:null\|undefined\)\$/i);
+  assert.match(profile, /if \(!post\?\.public_post\) \{\s*setImage\(img, url, 360,/);
+  assert.match(profile, /img\.src = url;/);
+  assert.match(profile, /post\.public_post \? url/);
   assert.match(publicPosts, /select\(columns\)/);
   assert.match(publicPosts, /'id', 'created_at', 'title', 'category', 'description', 'media_url', 'media_type'/);
   assert.doesNotMatch(publicPosts, /\.eq\(['"](?:user_id|author_id)['"]/);
