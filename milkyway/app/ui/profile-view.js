@@ -728,7 +728,7 @@ export class ProfileView {
 
   #showLoadError(id) {
     this.content.replaceChildren(h('div', { class: 'empty-card profile-load-error' },
-      h('p', {}, navigator.onLine === false ? t('offline') : t('profileLoadFailed')),
+      h('p', {}, t('connectionLost')),
       h('button', { class: 'pill-btn', type: 'button', onclick: () => { void this.#load(id); } }, t('retry'))));
   }
 
