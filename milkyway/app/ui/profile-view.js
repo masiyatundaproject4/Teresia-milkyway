@@ -17,6 +17,9 @@ import { openShare } from './share-sheet.js';
 import { USERNAME_COOLDOWN_MS, usernameAvailable, usernameValidationMessage } from '../data/usernames.js';
 
 const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
+const profilePresenceOnline = id => Boolean(
+  id && typeof presence?.isOnline === 'function' && presence.isOnline(String(id)) === true,
+);
 const profileText = value => {
   if (typeof value !== 'string') return '';
   const cleaned = value.trim();
@@ -404,12 +407,12 @@ export class ProfileView {
     this.sheet = new Sheet({ title: t('me'), className: 'profile-sheet', onClose: () => this.#sheetClosed() });
     this.content = h('div', { class: 'profile' });
     this.sheet.body.append(this.content);
-    presence.subscribe(() => {
+    presence?.subscribe?.(() => {
       for (const node of this.content.querySelectorAll('[data-presence]')) {
-        node.classList.toggle('online', presence.isOnline(node.dataset.presence));
+        node.classList.toggle('online', profilePresenceOnline(node.dataset?.presence));
       }
       for (const node of this.content.querySelectorAll('.profile-online-status')) {
-        node.hidden = !presence.isOnline(node.dataset.userId);
+        node.hidden = !profilePresenceOnline(node.dataset?.userId);
       }
     });
     this.token = 0;
@@ -1077,9 +1080,9 @@ export class ProfileView {
           this.#quickPickImage('avatar');
         },
       },
-        h('span', { class: `presence-avatar${presence.isOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
+        h('span', { class: `presence-avatar${profilePresenceOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
           profileAvatar, h('i', { class: 'presence-dot', 'aria-hidden': 'true' })))
-      : h('span', { class: `presence-avatar${presence.isOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
+      : h('span', { class: `presence-avatar${profilePresenceOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
         profileAvatar, h('i', { class: 'presence-dot', 'aria-hidden': 'true' }));
     const toolbar = h('div', { class: 'profile-toolbar', 'data-no-swipe': true },
       h('div', { class: 'profile-toolbar-group' },
@@ -1119,7 +1122,7 @@ export class ProfileView {
         h('small', {
           class: 'presence-label profile-online-status',
           'data-user-id': profile.id,
-          hidden: !presence.isOnline(profile.id),
+          hidden: !profilePresenceOnline(profile.id),
         }, t('online')));
     const bio = profileText(profile.bio)
       ? h('p', { class: 'profile-bio' }, profileText(profile.bio))

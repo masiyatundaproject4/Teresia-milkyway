@@ -196,7 +196,10 @@ function requireLogin(force = false) {
 // Any author (feed / Lives) or, with no argument, the signed-in user's own profile.
 function openProfile(person = null, options = {}) {
   if (!person?.id && !requireLogin()) return;
-  profileView().then(view => view.open(person?.id ? person : null, options));
+  profileView().then(view => view.open(person?.id ? person : null, options)).catch(error => {
+    console.error('[profile] Could not open profile.', error);
+    toast(t('retry'));
+  });
 }
 function openCreate() {
   if (requireLogin()) composeSheet().then(sheet => sheet.open());
