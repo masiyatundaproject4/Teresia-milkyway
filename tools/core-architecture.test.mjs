@@ -2050,6 +2050,22 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.match(connections, /showing available follower entries/);
 });
 
+test('online presence never substitutes for an active LIVE session', () => {
+  const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
+  const connections = readFileSync(new URL('../milkyway/app/ui/followers-view.js', import.meta.url), 'utf8');
+  const inbox = readFileSync(new URL('../milkyway/app/ui/inbox-view.js', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(profile, /presence\.visible/);
+  assert.match(profile, /profile-online-status/);
+  assert.match(profile, /presence\.isOnline\(node\.dataset\.presence\)/);
+  assert.match(connections, /presence\.isOnline\(id\)/);
+  assert.match(connections, /select\('host_id,room_name,is_live'\)/);
+  assert.match(connections, /\.filter\(row => row\?\.is_live === true\)/);
+  assert.doesNotMatch(connections, /new Map\(saved\.liveRooms/);
+  assert.match(connections, /liveRoom \? h\('span', \{ class: 'connection-live-badge' \}, 'LIVE'\)/);
+  assert.match(inbox, /presence\.isOnline\(this\.peer\.id\) \? t\('online'\)/);
+});
+
 test('Orbit, Nova and Connections horizontal shortcuts use axis-locked captured gestures', () => {
   const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
   const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');

@@ -3,6 +3,7 @@ import { store } from '../core/store.js';
 import { bus } from '../core/events.js';
 import { t } from '../core/i18n.js';
 import { profiles } from '../data/profiles.js';
+import { presence } from '../data/presence.js';
 import { loadSuggestions } from '../data/promoted.js';
 import { actions } from '../data/feed.js';
 import { safePublicText } from '../data/usernames.js';
@@ -37,6 +38,9 @@ export class FollowersView {
     this.dismissed = new Set();
     this.token = 0;
     this.#build();
+    presence.subscribe(() => {
+      if (this.sheet.isOpen && this.mode === 'connections') this.#renderRows();
+    });
     bus.on('follow', () => {
       if (this.sheet.isOpen && this.mode === 'connections') this.#renderRows();
     });
@@ -156,6 +160,7 @@ export class FollowersView {
 
   async #load(token) {
     let cached = false;
+    this.liveRooms = new Map();
     const cacheKey = `connections:${auth.userId || 'guest'}:${this.person?.id || ''}`;
     const saved = await store.get(cacheKey);
     if (token !== this.token) return;
@@ -165,7 +170,6 @@ export class FollowersView {
       this.followDates = new Map(saved.followDates || []);
       this.people = saved.people;
       this.peopleById = new Map(saved.people.map(person => [String(person.id), person]));
-      this.liveRooms = new Map(saved.liveRooms || []);
       this.newPosts = new Map(saved.newPosts || []);
       this.requests = saved.requests || [];
       profiles.prime(saved.people);
@@ -232,10 +236,13 @@ export class FollowersView {
       profiles.prime(people);
 
       const liveResult = ids.length
-        ? await sb.from('mw_video_live_sessions').select('host_id,room_name').eq('is_live', true).in('host_id', ids).limit(100)
+        ? await sb.from('mw_video_live_sessions').select('host_id,room_name,is_live').eq('is_live', true).in('host_id', ids).limit(100)
         : { data: [], error: null };
       if (liveResult.error) console.warn('[connections] Could not load live status.', liveResult.error);
-      this.liveRooms = new Map((liveResult.data || []).map(row => [String(row.host_id), String(row.room_name || '')]).filter(([, room]) => room));
+      this.liveRooms = new Map((liveResult.data || [])
+        .filter(row => row?.is_live === true)
+        .map(row => [String(row.host_id || ''), String(row.room_name || '')])
+        .filter(([id, room]) => id && room));
 
       const countsResult = ids.length
         ? await sb.from('mw_posts').select('author_id').in('author_id', ids).gte('created_at', new Date(Date.now() - 7 * 86400000).toISOString()).limit(2000)
@@ -278,7 +285,6 @@ export class FollowersView {
         followerIds: this.followerIds,
         followDates: [...this.followDates],
         people: [...peopleById.values()],
-        liveRooms: [...this.liveRooms],
         newPosts: [...this.newPosts],
         requests: this.requests,
       });
@@ -459,14 +465,20 @@ export class FollowersView {
     const username = displayText(person.username).replace(/^@/, '');
     const row = h('article', { class: 'connection-row' });
     const liveRoom = this.liveRooms.get(id);
+    const online = presence.isOnline(id);
+    const status = [online ? t('online') : '', liveRoom ? t('live') : ''].filter(Boolean).join(' · ');
     const avatarButton = h('button', {
       class: `connection-avatar${liveRoom ? ' has-live' : ''}`, type: 'button',
-      'aria-label': liveRoom ? `${label} · ${t('live')}` : label,
+      'aria-label': status ? `${label} · ${status}` : label,
       onclick: () => liveRoom ? this.openLive?.(liveRoom) : this.openProfile?.(person),
-    }, avatar({ ...person, name: label }, 46), liveRoom ? h('span', { class: 'connection-live-badge' }, 'LIVE') : null);
+    },
+      h('span', { class: `presence-avatar${online ? ' online' : ''}`, 'data-presence': id },
+        avatar({ ...person, name: label }, 46), h('i', { class: 'presence-dot', 'aria-hidden': 'true' })),
+      liveRoom ? h('span', { class: 'connection-live-badge' }, 'LIVE') : null);
     const identity = h('button', {
       class: 'connection-identity', type: 'button', onclick: () => this.openProfile?.(person),
     }, h('b', {}, label), username ? h('small', { class: 'muted' }, `@${username}`) : null,
+    online ? h('small', { class: 'presence-label' }, t('online')) : null,
     subtitle ? h('small', { class: 'muted' }, subtitle) : null);
     const newCount = Number(this.newPosts?.get(id)) || 0;
     const newPosts = newCount > 0 ? h('span', { class: 'connection-new-posts' }, `${newCount} ${t('newPosts')}`) : null;

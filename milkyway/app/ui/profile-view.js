@@ -404,6 +404,14 @@ export class ProfileView {
     this.sheet = new Sheet({ title: t('me'), className: 'profile-sheet', onClose: () => this.#sheetClosed() });
     this.content = h('div', { class: 'profile' });
     this.sheet.body.append(this.content);
+    presence.subscribe(() => {
+      for (const node of this.content.querySelectorAll('[data-presence]')) {
+        node.classList.toggle('online', presence.isOnline(node.dataset.presence));
+      }
+      for (const node of this.content.querySelectorAll('.profile-online-status')) {
+        node.hidden = !presence.isOnline(node.dataset.userId);
+      }
+    });
     this.token = 0;
     this.posts = [];
     this.postAudiences = {};
@@ -1069,7 +1077,7 @@ export class ProfileView {
           this.#quickPickImage('avatar');
         },
       },
-        h('span', { class: `presence-avatar${presence.isOnline(profile.id) || presence.visible ? ' online' : ''}`, 'data-presence': profile.id },
+        h('span', { class: `presence-avatar${presence.isOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
           profileAvatar, h('i', { class: 'presence-dot', 'aria-hidden': 'true' })))
       : h('span', { class: `presence-avatar${presence.isOnline(profile.id) ? ' online' : ''}`, 'data-presence': profile.id },
         profileAvatar, h('i', { class: 'presence-dot', 'aria-hidden': 'true' }));
@@ -1108,9 +1116,11 @@ export class ProfileView {
           ? h('small', { class: 'profile-role' }, profileText(profile.role) || profileText(profile.status))
           : null,
         profile.private ? h('small', { class: 'muted' }, `🔒 ${t('privateAccount')}`) : null,
-        presence.isOnline(profile.id) || (this.own && presence.visible)
-          ? h('small', { class: 'presence-label' }, t('activeNow'))
-          : null));
+        h('small', {
+          class: 'presence-label profile-online-status',
+          'data-user-id': profile.id,
+          hidden: !presence.isOnline(profile.id),
+        }, t('online')));
     const bio = profileText(profile.bio)
       ? h('p', { class: 'profile-bio' }, profileText(profile.bio))
       : null;

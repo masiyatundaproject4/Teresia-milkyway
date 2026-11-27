@@ -299,7 +299,7 @@ class ChatSheet {
 
   #paintState() {
     if (!this.peer) return;
-    this.state.textContent = presence.isOnline(this.peer.id) ? t('activeNow') : (this.peer.username ? `@${this.peer.username}` : '');
+    this.state.textContent = presence.isOnline(this.peer.id) ? t('online') : (this.peer.username ? `@${this.peer.username}` : '');
   }
 
   async #load(peer) {

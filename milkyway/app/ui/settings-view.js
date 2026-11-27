@@ -292,7 +292,7 @@ export class NovaMenu {
       const person = { id, name: row.display_name || row.username || (id === auth.userId ? auth.name : 'MilkyWay'), avatar: row.avatar_url || '' };
       return h('div', { class: 'nova-list-row' },
         h('span', { class: 'presence-avatar online' }, avatar(person, 40), h('i', { class: 'presence-dot', 'aria-hidden': 'true' })),
-        h('div', { class: 'chat-text' }, h('b', {}, person.name), h('span', { class: 'presence-label' }, id === auth.userId ? t('online') : t('activeNow'))));
+        h('div', { class: 'chat-text' }, h('b', {}, person.name), h('span', { class: 'presence-label' }, t('online'))));
     }));
   }
 
