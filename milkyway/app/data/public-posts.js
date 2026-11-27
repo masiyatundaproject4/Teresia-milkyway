@@ -1,14 +1,8 @@
 const PUBLIC_POST_COLUMNS = [
   'id', 'created_at', 'title', 'category', 'description', 'media_url', 'media_type',
   'title_en', 'title_sw', 'description_en', 'description_sw', 'storage_path', 'published',
-  'author_id', 'user_id', 'username', 'author_username',
 ];
-const PUBLIC_POST_REQUIRED_COLUMNS = ['id'];
-const PUBLIC_POST_OWNER_COLUMNS = ['author_id', 'user_id', 'username', 'author_username'];
-const PUBLIC_POST_OPTIONAL_COLUMNS = [
-  ...PUBLIC_POST_COLUMNS.filter(column => !PUBLIC_POST_REQUIRED_COLUMNS.includes(column)),
-  'extra_info',
-];
+const PUBLIC_POST_OPTIONAL_COLUMNS = PUBLIC_POST_COLUMNS.filter(column => column !== 'id').concat('extra_info');
 const PUBLIC_POST_PAGE_SIZE = 500;
 
 const text = value => {
@@ -34,15 +28,15 @@ export function portfolioMediaUrl(sb, row) {
   return /^https?:\/\//i.test(url || '') ? url : '';
 }
 
-export async function loadPublicPosts(sb, { includeOwners = false } = {}) {
-  let fields = includeOwners
-    ? [...PUBLIC_POST_OPTIONAL_COLUMNS]
-    : PUBLIC_POST_OPTIONAL_COLUMNS.filter(column => !PUBLIC_POST_OWNER_COLUMNS.includes(column));
+export async function loadPublicPosts(sb, { publishedOnly = false } = {}) {
+  const required = publishedOnly ? ['id', 'published'] : ['id'];
+  let fields = PUBLIC_POST_OPTIONAL_COLUMNS.filter(column => !required.includes(column));
   const data = [];
   let offset = 0;
   while (true) {
-    const columns = [...PUBLIC_POST_REQUIRED_COLUMNS, ...fields].join(',');
+    const columns = [...required, ...fields].join(',');
     let query = sb.from('posts').select(columns);
+    if (publishedOnly) query = query.eq('published', true);
     query = query.order(fields.includes('created_at') ? 'created_at' : 'id', { ascending: false });
     const result = await query.range(offset, offset + PUBLIC_POST_PAGE_SIZE - 1);
     if (!result.error) {
@@ -67,8 +61,6 @@ export async function loadPublicPosts(sb, { includeOwners = false } = {}) {
     const swahili = typeof document !== 'undefined' && document.documentElement.lang === 'sw';
     const title = (swahili ? text(row.title_sw) || text(row.title_en) : text(row.title_en) || text(row.title_sw)) || text(row.title);
     const description = (swahili ? text(row.description_sw) || text(row.description_en) : text(row.description_en) || text(row.description_sw)) || text(row.description);
-    const authorId = includeOwners ? text(row.author_id) || text(row.user_id) : '';
-    const username = includeOwners ? text(row.username) || text(row.author_username) : '';
     return {
       ...row,
       id: `public:${String(row.id)}`,
@@ -77,8 +69,6 @@ export async function loadPublicPosts(sb, { includeOwners = false } = {}) {
       author_id: '',
       author_name: 'MilkyWay',
       author: { id: '', name: 'MilkyWay', username: '', avatar: '' },
-      profile_owner_id: authorId,
-      profile_username: username,
       audience: 'everyone',
       title,
       description,

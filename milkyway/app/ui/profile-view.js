@@ -297,8 +297,8 @@ function missingProfileColumn(error, columns) {
   return columns.find(column => new RegExp(`\\b${column}\\b`, 'i').test(message)) || null;
 }
 
-const postOwnerId = post => String(post?.profile_owner_id || post?.author_id || post?.user_id || post?.author?.id || post?.authorId || '');
-const postUsername = post => String(post?.profile_username || post?.username || post?.author_username || post?.author?.username || '').replace(/^@/, '').toLowerCase();
+const postOwnerId = post => String(post?.author_id || post?.user_id || post?.author?.id || post?.authorId || '');
+const postUsername = post => String(post?.username || post?.author_username || post?.author?.username || '').replace(/^@/, '').toLowerCase();
 const profileOwnsPost = (post, id, username) => {
   const ownerId = postOwnerId(post);
   const handle = String(username || '').replace(/^@/, '').toLowerCase();
@@ -356,12 +356,7 @@ async function loadProfilePosts(sb, id, username = '') {
     }
   }
   try {
-    const publicPosts = await loadPublicPosts(sb, { includeOwners: true });
-    const isCurrentProfile = String(id) === String(auth.userId || '');
-    results.push(...publicPosts.filter(post => {
-      const hasOwner = Boolean(postOwnerId(post) || postUsername(post));
-      return profileOwnsPost(post, id, username) || (!hasOwner && isCurrentProfile);
-    }));
+    results.push(...await loadPublicPosts(sb, { publishedOnly: true }));
   } catch (error) {
     publicPostsError = error;
     console.warn('[profile] public posts could not be loaded.', error);
@@ -520,7 +515,13 @@ export class ProfileView {
 
   async #selectTab(tab) {
     this.activeTab = tab;
-    this.tabs?.forEach(button => button.setAttribute('aria-selected', String(button.dataset.profileTab === tab)));
+    this.tabs?.setAttribute('data-active-tab', tab);
+    this.tabs?.querySelectorAll('[data-profile-tab]').forEach(button => {
+      const selected = button.dataset.profileTab === tab;
+      button.setAttribute('aria-selected', String(selected));
+      if (selected) this.grid?.setAttribute('aria-labelledby', button.id);
+    });
+    if (this.grid) this.grid.dataset.profilePanel = tab;
     const token = this.token;
     if (tab === 'posts' || tab === 'private') {
       if (!this.own && tab === 'private') {
@@ -1023,7 +1024,7 @@ export class ProfileView {
       actionsRow.append(h('button', { class: 'pill-btn hot', type: 'button', onclick: () => this.hooks.requireLogin() }, t('follow')));
     }
 
-    const grid = this.grid = h('div', { class: 'profile-grid' });
+    const grid = this.grid = h('div', { class: 'profile-grid', role: 'tabpanel', tabindex: '0' });
     grid.id = 'profileMediaGrid';
     const tabItems = [
       ['posts', t('posts'), '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>'],
@@ -1034,9 +1035,13 @@ export class ProfileView {
     const tabs = this.tabs = h('div', { class: 'profile-tabs', role: 'tablist', 'aria-label': t('profileContent') },
       ...tabItems.map(([key, label, glyph]) => h('button', {
         class: 'profile-tab', type: 'button', role: 'tab', 'data-profile-tab': key,
-        'aria-label': label, title: label, 'aria-controls': grid.id, 'aria-selected': String(this.activeTab === key),
-        html: glyph, onclick: () => this.#selectTab(key),
+        id: `profile-${key}-tab`, 'aria-label': label, title: label, 'aria-controls': grid.id,
+        'aria-selected': String(this.activeTab === key), html: glyph,
       })));
+    tabs.addEventListener('click', event => {
+      const button = event.target?.closest?.('[data-profile-tab]');
+      if (button && tabs.contains(button)) void this.#selectTab(button.dataset.profileTab);
+    });
     if (loading) this.#renderGrid([], { loading: true });
     else if (error || postsError) this.#renderGrid([], { message: profileText(postsError) || t('retry') });
     else void this.#selectTab(this.activeTab || 'posts');

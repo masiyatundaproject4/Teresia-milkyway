@@ -1930,36 +1930,32 @@ test('public posts retry missing optional columns and retain direct media URLs',
   assert.deepEqual(orders.slice(0, 2), ['created_at', 'id']);
 });
 
-test('public posts retain optional profile ownership fields', async () => {
+test('profile public posts query all authors with published status enabled', async () => {
   let selected = '';
+  let filter = null;
   const sb = {
     from(table) {
       assert.equal(table, 'posts');
       return {
         select(columns) { selected = columns; return this; },
+        eq(column, value) { filter = [column, value]; return this; },
         order(column) { assert.equal(column, 'created_at'); return this; },
         range() {
           return Promise.resolve({
-            data: [{
-              id: 'owned',
-              media_url: 'https://cdn.example.test/owned.jpg',
-              author_id: 'profile-id',
-              user_id: null,
-              username: 'profile-name',
-              author_username: null,
-            }],
+            data: [
+              { id: 'published', published: true, media_url: 'https://cdn.example.test/published.jpg' },
+              { id: 'draft', published: false, media_url: 'https://cdn.example.test/draft.jpg' },
+            ].filter(post => post.published === filter?.[1]),
             error: null,
           });
         },
       };
     },
   };
-  const [post] = await loadPublicPosts(sb, { includeOwners: true });
-  assert.equal(post.profile_owner_id, 'profile-id');
-  assert.equal(post.profile_username, 'profile-name');
-  assert.equal(post.author_id, '');
-  assert.equal(post.author.id, '');
-  assert.match(selected, /author_id,user_id,username,author_username/);
+  const posts = await loadPublicPosts(sb, { publishedOnly: true });
+  assert.deepEqual(filter, ['published', true]);
+  assert.equal(selected.split(',').includes('published'), true);
+  assert.deepEqual(posts.map(post => post.public_post_id), ['published']);
 });
 
 test('Nova profile merges public Orbit posts into the grid and counter data', () => {
@@ -1968,10 +1964,11 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   const connections = readFileSync(new URL('../milkyway/app/ui/followers-view.js', import.meta.url), 'utf8');
 
   assert.match(profile, /String\(id\) === String\(auth\.userId \|\| ''\)/);
-  assert.match(profile, /results\.push\(\.\.\.publicPosts\.filter\(post =>/);
-  assert.match(profile, /const publicPosts = await loadPublicPosts\(sb, \{ includeOwners: true \}\)/);
-  assert.match(profile, /publicPosts\.filter\(post =>/);
-  assert.match(profile, /profileOwnsPost\(post, id, username\)/);
+  assert.match(profile, /results\.push\(\.\.\.await loadPublicPosts\(sb, \{ publishedOnly: true \}\)\)/);
+  assert.match(profile, /this\.tabs\?\.querySelectorAll\('\[data-profile-tab\]'\)\.forEach/);
+  assert.match(profile, /tabs\.addEventListener\('click'/);
+  assert.match(profile, /role: 'tabpanel'/);
+  assert.match(profile, /grid\.dataset\.profilePanel = tab/);
   assert.match(profile, /loadProfilePosts\(sb, id, username\),/);
   assert.doesNotMatch(profile, /quiet\(loadProfilePosts\(sb, id, username\)\)/);
   assert.match(profile, /cachedProfilePosts\(id, username\)/);
@@ -1991,9 +1988,8 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.match(profile, /post\.public_post \? url/);
   assert.match(publicPosts, /select\(columns\)/);
   assert.match(publicPosts, /'id', 'created_at', 'title', 'category', 'description', 'media_url', 'media_type'/);
-  assert.match(publicPosts, /'author_id', 'user_id', 'username', 'author_username'/);
   assert.doesNotMatch(publicPosts, /\.eq\(['"](?:user_id|author_id)['"]/);
-  assert.doesNotMatch(publicPosts, /\.eq\(['"]published['"]/);
+  assert.match(publicPosts, /query = query\.eq\('published', true\)/);
   assert.match(publicPosts, /PUBLIC_POST_OPTIONAL_COLUMNS/);
   assert.match(profile, /name: profileText\(profile\.name\)/);
   assert.match(profile, /bio: profileText\(profile\.bio\)/);
