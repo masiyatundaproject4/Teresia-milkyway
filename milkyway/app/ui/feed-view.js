@@ -18,6 +18,8 @@ import { loadAds, loadSuggestions, weave, adImpression, adClick, dismissAd } fro
 import { openShare } from './share-sheet.js';
 
 const DOUBLE_TAP_MS = 260;
+const hasFeedPosts = value => Array.isArray(value?.posts)
+  && value.posts.some(post => post && typeof post === 'object' && !post.kind && post.id && !deletedPosts.has(post.id));
 const displayText = value => {
   if (typeof value !== 'string') return '';
   const cleaned = value.trim();
@@ -32,9 +34,15 @@ export class FeedView {
     this.scope = null;
     this.unsubscribe = null;
     this.interacted = false;
+    this.statusKind = null;
+    this.statusSuppressed = false;
     this.status = h('div', { class: 'feed-status', hidden: true });
     this.surface = h('div', { class: 'feed-pager', tabindex: '0', 'aria-roledescription': 'carousel', 'aria-label': 'Feed' });
     root.append(this.surface, this.status);
+    document.addEventListener('mw:sheetchange', () => {
+      this.statusSuppressed = [...document.querySelectorAll('.sheet-layer')].some(layer => !layer.hidden);
+      this.status.hidden = this.statusSuppressed || !this.statusKind;
+    });
 
     this.pager = new VerticalPager(this.surface, {
       radius: device.windowRadius,
@@ -88,7 +96,7 @@ export class FeedView {
     this.interacted = false;
     const source = this.source;
     if (!source) return Promise.resolve();
-    this.#setStatus('loading');
+    this.#setStatus(this.pager.items.length || hasFeedPosts(source.source.value) ? null : 'loading');
     return source.refresh().then(() => this.#emptyCheck(source));
   }
   focus() { this.surface.focus({ preventScroll: true }); }
@@ -103,7 +111,7 @@ export class FeedView {
 
   #apply(value) {
     this.lastValue = value;
-    const live = post => !post.kind && !deletedPosts.has(post.id);
+    const live = post => post && typeof post === 'object' && !post.kind && post.id && !deletedPosts.has(post.id);
     const incoming = (value?.posts || []).filter(live);
     const current = this.pager.items.filter(live);
     let items = incoming;
@@ -121,7 +129,10 @@ export class FeedView {
 
   #emptyCheck(source = this.source) {
     if (source !== this.source) return;
-    if (this.pager.items.length) return this.#setStatus(null);
+    if (this.pager.items.length || hasFeedPosts(source?.source?.value)) {
+      this.#setStatus(null);
+      return;
+    }
     if (navigator.onLine === false) return this.#setStatus('offline');
     this.#setStatus(source?.source.error ? 'feedLoadFailed' : this.scope === 'following' ? 'emptyFollowing' : 'empty');
   }
@@ -147,12 +158,14 @@ export class FeedView {
   }
 
   #setStatus(kind) {
-    this.status.hidden = !kind;
+    this.statusKind = kind;
+    this.status.hidden = this.statusSuppressed || !kind;
     if (!kind) return;
     if (kind === 'loading') { this.status.replaceChildren(h('div', { class: 'skeleton-slide', 'aria-busy': 'true', 'aria-label': t('loading') }, h('i'), h('b'), h('span'))); return; }
+    const retryable = kind === 'offline' || kind === 'feedLoadFailed';
     this.status.replaceChildren(h('div', { class: 'empty-card' },
       h('p', {}, kind === 'offline' ? t('offline') : t(kind)),
-      h('button', { class: 'pill-btn', type: 'button', onclick: () => { this.#setStatus('loading'); this.reload(); } }, t('retry'))));
+      retryable ? h('button', { class: 'pill-btn', type: 'button', onclick: () => { this.#setStatus('loading'); this.reload(); } }, t('retry')) : null));
   }
 
   // ---- Slides ----------------------------------------------------------------------------------------------
@@ -466,6 +479,16 @@ export class FeedView {
       if (!target || !post) return;
       const act = target.dataset.act;
       if (post.public_post) {
+        if (act === 'profile') {
+          event.stopPropagation();
+          this.hooks.openProfile({
+            id: post.profile_owner_id || post.author_id || post.user_id || post.owner_id || post.author?.id,
+            username: post.profile_username || post.username || post.handle || post.author_username || post.author_handle,
+            name: post.author_name || post.author?.name,
+            avatar: post.author?.avatar,
+          });
+          return;
+        }
         if (act === 'media') {
           if (mediaKind(post) === 'video') this.#tap(slide);
           else this.hooks.openPost?.(post);

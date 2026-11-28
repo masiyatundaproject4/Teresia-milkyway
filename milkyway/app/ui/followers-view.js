@@ -11,6 +11,9 @@ import { Sheet } from './sheet.js';
 import { avatar, h, icon, toast } from './dom.js';
 
 const displayText = safePublicText;
+const personIsOnline = id => Boolean(
+  id && typeof presence?.isOnline === 'function' && presence.isOnline(String(id)) === true,
+);
 
 const safePerson = row => ({
   id: String(row?.id || ''),
@@ -38,7 +41,7 @@ export class FollowersView {
     this.dismissed = new Set();
     this.token = 0;
     this.#build();
-    presence.subscribe(() => {
+    presence?.subscribe?.(() => {
       if (this.sheet.isOpen && this.mode === 'connections') this.#renderRows();
     });
     bus.on('follow', () => {
@@ -238,8 +241,8 @@ export class FollowersView {
       const liveResult = ids.length
         ? await sb.from('mw_video_live_sessions').select('host_id,room_name,is_live').eq('is_live', true).in('host_id', ids).limit(100)
         : { data: [], error: null };
-      if (liveResult.error) console.warn('[connections] Could not load live status.', liveResult.error);
-      this.liveRooms = new Map((liveResult.data || [])
+      if (liveResult?.error) console.warn('[connections] Could not load live status.', liveResult.error);
+      this.liveRooms = new Map((Array.isArray(liveResult?.data) ? liveResult.data : [])
         .filter(row => row?.is_live === true)
         .map(row => [String(row.host_id || ''), String(row.room_name || '')])
         .filter(([id, room]) => id && room));
@@ -454,7 +457,8 @@ export class FollowersView {
       return !this.searchTerm || text.includes(this.searchTerm.replace(/^@/, ''));
     });
     if (this.sort === 'name') rows.sort((a, b) => displayText(a.name).localeCompare(displayText(b.name)));
-    else if (this.sort === 'live') rows.sort((a, b) => Number(this.liveRooms.has(b.id)) - Number(this.liveRooms.has(a.id)));
+    else if (this.sort === 'live') rows.sort((a, b) =>
+      Number(this.liveRooms?.has?.(b.id) === true) - Number(this.liveRooms?.has?.(a.id) === true));
     else rows.sort((a, b) => (this.followDates?.get(b.id) || 0) - (this.followDates?.get(a.id) || 0));
     this.content.replaceChildren(...(rows.length ? rows.map(person => this.#personRow(person)) : [h('p', { class: 'muted center' }, t('noneYet'))]));
   }
@@ -464,8 +468,9 @@ export class FollowersView {
     const label = displayText(person.name) || displayText(person.username) || 'MilkyWay';
     const username = displayText(person.username).replace(/^@/, '');
     const row = h('article', { class: 'connection-row' });
-    const liveRoom = this.liveRooms.get(id);
-    const online = presence.isOnline(id);
+    const room = this.liveRooms?.get?.(id);
+    const liveRoom = typeof room === 'string' && room.trim() ? room : '';
+    const online = personIsOnline(id);
     const status = [online ? t('online') : '', liveRoom ? t('live') : ''].filter(Boolean).join(' · ');
     const avatarButton = h('button', {
       class: `connection-avatar${liveRoom ? ' has-live' : ''}`, type: 'button',

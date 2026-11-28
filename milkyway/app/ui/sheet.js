@@ -24,13 +24,18 @@ export class Sheet {
     if (document.body.lastElementChild !== this.root) document.body.append(this.root);
     clearTimeout(this.hideTimer);
     this.root.hidden = false;
-    requestAnimationFrame(() => this.root.classList.add('open'));
+    void this.panel.offsetHeight;
+    this.root.classList.add('open');
+    document.dispatchEvent(new Event('mw:sheetchange'));
     if (this.autoFocus) setTimeout(() => this.panel.querySelector('input, textarea, button')?.focus({ preventScroll: true }), 220);
   }
   close() {
     if (this.root.hidden) return;
     this.root.classList.remove('open');
-    this.hideTimer = setTimeout(() => { this.root.hidden = true; }, 220);
+    this.hideTimer = setTimeout(() => {
+      this.root.hidden = true;
+      document.dispatchEvent(new Event('mw:sheetchange'));
+    }, 220);
     this.returnFocus?.focus?.({ preventScroll: true });
     this.onClose?.();
   }
