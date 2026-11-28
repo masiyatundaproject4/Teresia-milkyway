@@ -56,6 +56,14 @@ export const profiles = {
     bus.emit('profile', profile);
   },
   peek: id => memory.get(String(id)) || null,
+  async cached(id) {
+    const key = String(id);
+    if (memory.has(key)) return memory.get(key);
+    const profile = normalize(await store.get(`profile:${key}`));
+    if (profile?.id !== key) return null;
+    memory.set(key, profile);
+    return profile;
+  },
   matching(query) {
     const needle = safePublicText(query).replace(/^@/, '').toLocaleLowerCase();
     if (needle.length < 2) return [];
@@ -71,7 +79,7 @@ export const profiles = {
       const saved = await store.get(`profile:${id}`);
       if (saved) {
         const profile = normalize(saved);
-        if (profile?.id) {
+        if (profile?.id === id) {
           memory.set(id, profile);
           store.set(`profile:${id}`, profile);
         } else missing.push(id);

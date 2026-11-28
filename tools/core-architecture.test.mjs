@@ -56,8 +56,15 @@ test('Nova and profile taps route to an open profile sheet for IDs and handles',
   const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
   const sheet = readFileSync(new URL('../milkyway/app/ui/sheet.js', import.meta.url), 'utf8');
   assert.match(main, /else if \(nav === 'me'\) openProfile\(\)/);
-  assert.match(main, /profiles\.matching\(handle\)\.find/);
-  assert.match(main, /\.eq\('username', handle\)\.maybeSingle\(\)/);
+  assert.doesNotMatch(main, /profiles\.matching\(handle\)\.find/);
+  assert.doesNotMatch(main, /\.eq\('username', handle\)\.maybeSingle\(\)/);
+  assert.match(profile, /\.eq\('username', requestedUsername\)/);
+  assert.match(profile, /profiles\.cached\(id\)/);
+  assert.match(profile, /#renderFallback\(id, requestedUsername, cached, error\)/);
+  assert.match(profile, /const rawId = candidate[\s\S]*: auth\.userId/);
+  assert.match(profile, /if \(\(!profile\.data \|\| profile\.error\) && id && requestedUsername\)/);
+  assert.match(profile, /cachedProfilePosts\(fallbackId, fallbackUsername\)/);
+  assert.match(profile, /disabled: !profile\.id/);
   assert.match(main, /button\.dataset\.nav === 'me'/);
   assert.match(main, /shell\.dataset\.view = 'home'/);
   assert.doesNotMatch(main, /function setNav\(name\) \{[^}]*shell\.dataset\.view/);
@@ -2047,7 +2054,7 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.match(profile, /tabs\.addEventListener\('click'/);
   assert.match(profile, /role: 'tabpanel'/);
   assert.match(profile, /grid\.dataset\.profilePanel = tab/);
-  assert.match(profile, /loadProfilePosts\(sb, id, username\),/);
+  assert.match(profile, /loadProfilePosts\(sb, id, resolvedUsername\),/);
   assert.doesNotMatch(profile, /quiet\(loadProfilePosts\(sb, id, username\)\)/);
   assert.match(profile, /cachedProfilePosts\(id, username\)/);
   assert.match(profile, /this\.posts = Array\.isArray\(posts\) \? posts\.filter/);

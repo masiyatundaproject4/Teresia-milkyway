@@ -16,7 +16,14 @@ import { isOwnerAccount } from './admin-view.js';
 import { openShare } from './share-sheet.js';
 import { USERNAME_COOLDOWN_MS, usernameAvailable, usernameValidationMessage } from '../data/usernames.js';
 
-const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
+const quiet = async request => {
+  try { return await request(); }
+  catch (error) { return { error }; }
+};
+const validProfileId = value => {
+  const id = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+  return /^(?:null|undefined)$/i.test(id) ? '' : id;
+};
 const profilePresenceOnline = id => Boolean(
   id && typeof presence?.isOnline === 'function' && presence.isOnline(String(id)) === true,
 );
@@ -317,8 +324,7 @@ function cachedProfilePosts(id, username, sb = null) {
 async function loadProfilePosts(sb, id, username = '') {
   const optional = [...PROFILE_POST_OPTIONAL];
   const ownerFilters = [
-    ['author_id', id],
-    ['user_id', id],
+    ...(id ? [['author_id', id], ['user_id', id]] : []),
     ...(username ? [['username', username], ['author_username', username]] : []),
   ];
   const results = [];
@@ -700,30 +706,49 @@ export class ProfileView {
   /** person: { id, name, username, avatar } or null for the signed-in user. */
   open(person = null, options = {}) {
     const candidate = person && typeof person === 'object' && !Array.isArray(person) ? person : null;
-    const rawId = candidate?.id ?? auth.userId;
-    if (typeof rawId !== 'string' && typeof rawId !== 'number') return;
-    const id = String(rawId).trim();
-    if (!id || /^(?:null|undefined)$/i.test(id)) return;
+    const rawId = candidate
+      ? [candidate.id, candidate.profile_owner_id, candidate.author_id, candidate.user_id, candidate.owner_id,
+        candidate.author?.id, candidate.owner?.id].find(value =>
+        (typeof value === 'string' || typeof value === 'number')
+          && String(value).trim() && !/^(?:null|undefined)$/i.test(String(value).trim()))
+      : auth.userId;
+    const id = validProfileId(rawId);
+    const rawUsername = [candidate?.username, candidate?.handle, candidate?.profile_username,
+      candidate?.author_username, candidate?.author_handle, candidate?.author?.username, candidate?.owner?.username]
+      .find(value => typeof value === 'string' && value.trim() && !/^(?:null|undefined)$/i.test(value.trim()));
+    const username = profileText(rawUsername).replace(/^@+/, '').toLowerCase();
+    if ((!id || /^(?:null|undefined)$/i.test(id)) && !username) return;
     const { photo = null, fullscreen = false } = options && typeof options === 'object' ? options : {};
     this.pendingPhoto = photo;
     this.id = id;
-    this.own = id === auth.userId;
+    this.username = username;
+    this.own = Boolean(id && id === auth.userId);
     this.activeTab = 'posts';
     this.postAudiences = {};
     this.audienceLoadError = false;
     this.sheet.panel.classList.toggle('profile-sheet-fullscreen', fullscreen);
-    this.sheet.title = this.own ? t('me') : (profileText(candidate?.name || profiles.peek(id)?.name) || t('profile'));
+    const cachedProfile = id ? profiles.peek(id) : null;
+    const cached = cachedProfile?.username && username && cachedProfile.username !== username ? null : cachedProfile;
+    const seed = {
+      ...(candidate || {}),
+      id,
+      username: username || profileText(candidate?.username) || cached?.username || '',
+      name: profileText(candidate?.name) || cached?.name || '',
+      avatar: profileText(candidate?.avatar) || cached?.avatar || '',
+    };
+    this.sheet.title = this.own ? t('me')
+      : profileText(seed.name) || (username ? `@${username}` : t('profile'));
     this.sheet.panel.setAttribute('aria-label', this.sheet.title);
     this.sheet.open();
     this.hooks.onOpen?.();
     try {
-      this.#render({ profile: candidate || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });
+      this.#render({ profile: { ...seed, name: seed.name || (this.own ? auth.name : '') }, loading: true });
     } catch (error) {
       console.error('[profile] Profile view could not be rendered.', error);
       this.#showLoadError();
     }
     this.#pushProfileHistory();
-    void this.#load(id);
+    void this.#load(id, username);
   }
 
   #showLoadError() {
@@ -839,44 +864,142 @@ export class ProfileView {
     }
   }
 
-  async #load(id) {
+  #renderFallback(id, username, cached, error) {
+    console.warn('[profile] profile refresh failed; showing available local data.', error);
+    const seed = { ...(cached || {}), ...(this.profile || {}) };
+    const fallbackId = id || validProfileId(seed.id);
+    const fallbackUsername = profileText(username || seed.username).replace(/^@+/, '').toLowerCase();
+    this.id = fallbackId;
+    this.username = fallbackUsername;
+    this.own = Boolean(fallbackId && fallbackId === auth.userId);
+    if (this.own) this.hooks.onOpen?.();
+    const profile = {
+      ...seed,
+      id: fallbackId,
+      name: profileText(seed.name) || (this.own ? auth.name : 'MilkyWay'),
+      username: fallbackUsername,
+      avatar: profileText(seed.avatar),
+      cover: profileText(seed.cover) || profileText(cachedCover(fallbackId)),
+    };
+    this.sheet.title = this.own ? t('me')
+      : profile.name !== 'MilkyWay' ? profile.name : fallbackUsername ? `@${fallbackUsername}` : t('profile');
+    let posts = [];
+    try { posts = cachedProfilePosts(fallbackId, fallbackUsername); }
+    catch (cacheError) { console.warn('[profile] cached posts could not be read.', cacheError); }
+    try {
+      this.#render({ profile, posts });
+      if (this.own && this.pendingPhoto) {
+        const selected = this.pendingPhoto;
+        this.pendingPhoto = null;
+        this.#edit(profile, { photo: selected });
+      }
+    } catch (renderError) {
+      console.error('[profile] cached profile could not be rendered.', renderError);
+      this.#showLoadError();
+    }
+  }
+
+  async #load(id, username = this.username) {
     const token = ++this.token;
     this.mode = 'profile';
     this.audienceLoadError = false;
+    const requestedUsername = profileText(username || this.profile?.username).replace(/^@+/, '').toLowerCase();
+    let cached = id ? profiles.peek(id) : null;
+    if (!cached && requestedUsername) {
+      cached = profiles.matching(requestedUsername).find(profile => profile.username === requestedUsername) || null;
+    }
+    if (cached?.username && requestedUsername && cached.username !== requestedUsername) cached = null;
+    if (!id && cached?.id) id = cached.id;
+    if (id && !cached) {
+      try { cached = await profiles.cached(id); }
+      catch (error) { console.warn('[profile] local profile cache could not be read.', error); }
+    }
+    if (cached?.username && requestedUsername && cached.username !== requestedUsername) cached = null;
+    if (token !== this.token) return;
     try {
       const sb = await supabase();
       const head = { count: 'exact', head: true };
-      const profile = await quiet(sb.from('mw_profiles').select('*').eq('id', id).maybeSingle());
+      let profile = await quiet(() => {
+        let query = sb.from('mw_profiles').select('*');
+        query = id ? query.eq('id', id) : query.eq('username', requestedUsername);
+        return query.maybeSingle();
+      });
       if (token !== this.token) return;
+      if (profile.error) console.warn('[profile] profile row unavailable; using cached profile data.', profile.error);
+      if ((!profile.data || profile.error) && id && requestedUsername) {
+        const byUsername = await quiet(() => sb.from('mw_profiles').select('*')
+          .eq('username', requestedUsername).maybeSingle());
+        if (token !== this.token) return;
+        if (byUsername.data) profile = byUsername;
+        else if (byUsername.error) console.warn('[profile] username fallback lookup failed.', byUsername.error);
+      }
       const row = profile.data || {};
-      const username = profileText(row.username) || profileText(profiles.peek(id)?.username);
+      const rowId = validProfileId(row.id);
+      if (rowId && rowId !== id) {
+        cached = profiles.peek(rowId);
+        if (!cached) {
+          try { cached = await profiles.cached(rowId); }
+          catch (error) { console.warn('[profile] local profile cache could not be read.', error); }
+        }
+      }
+      id = rowId || id;
+      if (token !== this.token) return;
+      const resolvedUsername = profileText(row.username) || profileText(cached?.username)
+        || profileText(this.profile?.username) || requestedUsername;
+      this.id = id;
+      this.username = resolvedUsername;
+      this.own = Boolean(id && id === auth.userId);
+      if (this.own) this.hooks.onOpen?.();
+      if (!id && !resolvedUsername) {
+        this.#renderFallback(id, requestedUsername, cached, profile.error || new Error('Profile row was not found.'));
+        return;
+      }
+      const queryProfile = (table, selection, filter, value) => quiet(() =>
+        sb.from(table).select(selection, head).eq(filter, value));
       const [followers, following, posts, followingRows, followerRows, requests] = await Promise.all([
-        quiet(sb.from('mw_follows').select('follower_id', head).eq('following_id', id)),
-        quiet(sb.from('mw_follows').select('following_id', head).eq('follower_id', id)),
-        loadProfilePosts(sb, id, username),
-        quiet(sb.from('mw_follows').select('following_id').eq('follower_id', id).limit(2000)),
-        quiet(sb.from('mw_follows').select('follower_id').eq('following_id', id).limit(2000)),
-        this.own ? quiet(sb.from('mw_follow_requests').select('requester_id', head).eq('target_id', id)) : Promise.resolve({ count: 0 }),
+        id ? queryProfile('mw_follows', 'follower_id', 'following_id', id) : Promise.resolve({ count: 0 }),
+        id ? queryProfile('mw_follows', 'following_id', 'follower_id', id) : Promise.resolve({ count: 0 }),
+        loadProfilePosts(sb, id, resolvedUsername),
+        id ? quiet(() => sb.from('mw_follows').select('following_id').eq('follower_id', id).limit(2000)) : Promise.resolve({ data: [] }),
+        id ? quiet(() => sb.from('mw_follows').select('follower_id').eq('following_id', id).limit(2000)) : Promise.resolve({ data: [] }),
+        this.own && id ? quiet(() => sb.from('mw_follow_requests').select('requester_id', head).eq('target_id', id)) : Promise.resolve({ count: 0 }),
       ]);
       if (token !== this.token) return;
+      for (const [label, result] of [
+        ['follower count', followers],
+        ['following count', following],
+        ['following list', followingRows],
+        ['follower list', followerRows],
+        ['follow requests', requests],
+      ]) {
+        if (result?.error) console.warn(`[profile] ${label} could not be loaded.`, result.error);
+      }
+      if (posts.error) console.warn('[profile] profile posts could not be loaded.', posts.error);
+      const currentCached = id ? profiles.peek(id) || cached : cached;
       const person = {
         id,
-        name: profileText(row.display_name) || profileText(profiles.peek(id)?.name) || profileText(this.own ? auth.name : 'MilkyWay'),
-        username,
-        usernameAutoGenerated: Boolean(row.username_auto_generated),
-        usernameUpdatedAt: profileText(row.username_updated_at),
-        avatar: profileText(row.avatar_url),
-        cover: profileText(row.cover_url) || profileText(cachedCover(id)),
-        bio: profileText(row.bio),
-        role: profileText(row.role) || profileText(row.status),
-        interests: Array.isArray(row.interests) ? row.interests.map(profileText).filter(Boolean) : profileText(row.interests),
-        private: Boolean(row.is_private),
+        name: profileText(row.display_name) || profileText(currentCached?.name)
+          || profileText(this.profile?.name) || profileText(this.own ? auth.name : 'MilkyWay'),
+        username: resolvedUsername,
+        usernameAutoGenerated: Boolean(row.username_auto_generated ?? this.profile?.usernameAutoGenerated),
+        usernameUpdatedAt: profileText(row.username_updated_at) || profileText(this.profile?.usernameUpdatedAt),
+        avatar: profileText(row.avatar_url) || profileText(currentCached?.avatar) || profileText(this.profile?.avatar),
+        cover: profileText(row.cover_url) || profileText(currentCached?.cover) || profileText(this.profile?.cover) || profileText(cachedCover(id)),
+        bio: profileText(row.bio) || profileText(this.profile?.bio),
+        role: profileText(row.role) || profileText(row.status) || profileText(this.profile?.role),
+        interests: Array.isArray(row.interests) ? row.interests.map(profileText).filter(Boolean)
+          : profileText(row.interests) || this.profile?.interests || '',
+        private: row.is_private ?? currentCached?.private ?? this.profile?.private ?? false,
       };
-      profiles.prime([{ id, name: person.name, username: person.username, avatar: person.avatar, private: person.private }]);
-      if (!this.own) this.sheet.title = profileText(person.name) || t('profile');
-      const { data: pin } = await quiet(sb.from('mw_creator_pins').select('post_id').eq('creator_id', id).maybeSingle());
+      if (id) profiles.prime([{ id, name: person.name, username: person.username, avatar: person.avatar, private: person.private }]);
+      this.sheet.title = this.own ? t('me') : profileText(person.name) !== 'MilkyWay'
+        ? profileText(person.name) : resolvedUsername ? `@${resolvedUsername}` : t('profile');
+      const pin = id
+        ? await quiet(() => sb.from('mw_creator_pins').select('post_id').eq('creator_id', id).maybeSingle())
+        : { data: null };
+      if (pin.error) console.warn('[profile] pinned post could not be loaded.', pin.error);
       const profilePosts = Array.isArray(posts.data) ? posts.data : [];
-      if (pin?.post_id) profilePosts.sort((a, b) => Number(b.id === pin.post_id) - Number(a.id === pin.post_id));
+      if (pin?.data?.post_id) profilePosts.sort((a, b) => Number(b.id === pin.data.post_id) - Number(a.id === pin.data.post_id));
       let audienceMap = {};
       const ownedPosts = profilePosts.filter(post => !post.public_post);
       if (this.own && ownedPosts.length) {
@@ -910,7 +1033,7 @@ export class ProfileView {
         friends,
         requests: requests.count || 0,
         posts: postsWithAudience,
-        postsError: profileText(posts.error?.message),
+        postsError: posts.error ? t('profilePostsUnavailable') : '',
       };
       this.#render(renderData);
       if (this.own && this.pendingPhoto) {
@@ -918,11 +1041,10 @@ export class ProfileView {
         this.pendingPhoto = null;
         this.#edit(person, { photo: selected });
       }
-      this.#loadBusiness(person, token);
+      if (id) this.#loadBusiness(person, token);
     } catch (error) {
       if (token === this.token) {
-        console.error('[profile] profile data could not be loaded.', error);
-        this.#showLoadError();
+        this.#renderFallback(id, requestedUsername, cached, error);
       }
     }
   }
@@ -1010,9 +1132,9 @@ export class ProfileView {
     this.posts = Array.isArray(posts) ? posts.filter(post => post && typeof post === 'object') : [];
     this.postCount = h('b', {}, count(this.posts.filter(isPostsTabPost).length));
     const stats = h('div', { class: 'profile-stats' },
-      h('button', { type: 'button', onclick: () => this.hooks.openFollowers?.(profile, { tab: 'following' }) }, h('b', {}, count(following)), t('followingCount')),
-      h('button', { type: 'button', onclick: () => this.hooks.openFollowers?.(profile, { tab: 'followers' }) }, h('b', {}, count(followers)), t('followers')),
-      h('button', { type: 'button', onclick: () => this.hooks.openFollowers?.(profile, { tab: 'friends' }) }, h('b', {}, count(friends)), t('friends')),
+      h('button', { type: 'button', disabled: !profile.id, onclick: () => this.hooks.openFollowers?.(profile, { tab: 'following' }) }, h('b', {}, count(following)), t('followingCount')),
+      h('button', { type: 'button', disabled: !profile.id, onclick: () => this.hooks.openFollowers?.(profile, { tab: 'followers' }) }, h('b', {}, count(followers)), t('followers')),
+      h('button', { type: 'button', disabled: !profile.id, onclick: () => this.hooks.openFollowers?.(profile, { tab: 'friends' }) }, h('b', {}, count(friends)), t('friends')),
       h('button', { type: 'button', onclick: () => {
         this.#selectTab('posts');
         requestAnimationFrame(() => this.grid?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -1029,7 +1151,7 @@ export class ProfileView {
           import('./admin-view.js').then(m => (ProfileView.admin ||= new m.AdminView()).open());
         } }, '🛡 Admin'));
       }
-    } else if (auth.signedIn()) {
+    } else if (auth.signedIn() && profile.id) {
       const button = h('button', { class: 'pill-btn hot', type: 'button' });
       const paint = () => {
         const on = profiles.isFollowing(profile.id);
@@ -1046,7 +1168,7 @@ export class ProfileView {
       paint();
       actionsRow.append(button,
         h('button', { class: 'pill-btn', type: 'button', onclick: () => { this.sheet.close(); this.hooks.openChat?.(profile); } }, h('span', { html: icon.inbox }), t('inbox')));
-    } else {
+    } else if (!auth.signedIn()) {
       actionsRow.append(h('button', { class: 'pill-btn hot', type: 'button', onclick: () => this.hooks.requireLogin() }, t('follow')));
     }
 
