@@ -282,9 +282,7 @@ export class NovaMenu {
   async #online() {
     const box = h('div', { class: 'nova-list nova-online-list' }, h('p', { class: 'muted center' }, t('loading')));
     this.#screen(`${count(presence.count)} ${t('activeUsers')}`, box);
-    const onlineIds = presence?.ids;
-    const ids = (Array.isArray(onlineIds) ? onlineIds : [])
-      .filter(id => typeof id === 'string' && /^[a-f0-9-]{36}$/i.test(id)).slice(0, 100);
+    const ids = presence.ids.filter(id => /^[a-f0-9-]{36}$/i.test(id)).slice(0, 100);
     if (!ids.length) { box.replaceChildren(h('p', { class: 'muted center' }, t('empty'))); return; }
     let rows = [];
     try { const sb = await supabase(); rows = (await sb.from('mw_profiles').select('id,display_name,username,avatar_url').in('id', ids)).data || []; } catch {}

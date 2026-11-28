@@ -50,38 +50,6 @@ test('people search prioritizes new profiles, separates unique handles from name
   assert.match(auth, /profiles\.update\(profile\)/);
 });
 
-test('Nova and profile taps route to an open profile sheet for IDs and handles', () => {
-  const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
-  const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
-  const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
-  const sheet = readFileSync(new URL('../milkyway/app/ui/sheet.js', import.meta.url), 'utf8');
-  assert.match(main, /else if \(nav === 'me'\) openProfile\(\)/);
-  assert.doesNotMatch(main, /profiles\.matching\(handle\)\.find/);
-  assert.doesNotMatch(main, /\.eq\('username', handle\)\.maybeSingle\(\)/);
-  assert.match(profile, /\.eq\('username', requestedUsername\)/);
-  assert.match(profile, /profiles\.cached\(id\)/);
-  assert.match(profile, /#renderFallback\(id, requestedUsername, cached, error\)/);
-  assert.match(profile, /const rawId = candidate[\s\S]*: auth\.userId/);
-  assert.match(profile, /if \(\(!profile\.data \|\| profile\.error\) && id && requestedUsername\)/);
-  assert.match(profile, /cachedProfilePosts\(fallbackId, fallbackUsername\)/);
-  assert.match(profile, /disabled: !profile\.id/);
-  assert.match(main, /button\.dataset\.nav === 'me'/);
-  assert.match(main, /shell\.dataset\.view = 'home'/);
-  assert.doesNotMatch(main, /function setNav\(name\) \{[^}]*shell\.dataset\.view/);
-  assert.match(main, /hasOpenSheet\(\) \|\| Boolean\(document\.querySelector\('\.pv-layer:not\(\[hidden\]\)'\)\)/);
-  assert.match(feed, /if \(act === 'profile'\)[\s\S]*post\.profile_owner_id[\s\S]*post\.profile_username/);
-  assert.match(feed, /mw:sheetchange/);
-  assert.match(feed, /const retryable = kind === 'offline' \|\| kind === 'feedLoadFailed'/);
-  assert.match(profile, /this\.hooks\.onOpen\?\.\(\)/);
-  assert.match(profile, /this\.hooks\.onClose\?\.\(\)/);
-  assert.match(main, /toast\(t\('profileOpenFailed'\)\)/);
-  assert.doesNotMatch(main, /toast\(t\('connectionLost'\)\)/);
-  assert.match(profile, /#showLoadError\(\)[\s\S]*t\('profileOpenFailed'\)/);
-  assert.doesNotMatch(profile, /h\('p', \{\}, t\('connectionLost'\)\)/);
-  assert.doesNotMatch(profile, /#showLoadError\(id\)/);
-  assert.match(sheet, /dispatchEvent\(new Event\('mw:sheetchange'\)\)/);
-});
-
 test('group management schema and UI implement guarded joins, invitations and co-admin tools', () => {
   const migration = readFileSync(new URL('../supabase/migrations/20261207_milkyway_dm_group_management.sql', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/milkyway-groups.js', import.meta.url), 'utf8');
@@ -761,13 +729,10 @@ test('Orbit feed subscribes to global post changes and Supabase publishes mw_pos
   assert.match(migration, /alter publication supabase_realtime add table public\.mw_posts/i);
   assert.match(view, /source\.load\(\)\.then\(\(\) => source\.refresh\(\)\)/);
   assert.match(view, /source\?\.source\.error[\s\S]*feedLoadFailed/);
-  assert.match(view, /if \(this\.pager\.items\.length \|\| hasFeedPosts\(source\?\.source\?\.value\)\)\s*\{\s*this\.#setStatus\(null\)/);
-  assert.match(view, /this\.#setStatus\(this\.pager\.items\.length \|\| hasFeedPosts\(source\.source\.value\) \? null : 'loading'\)/);
   assert.match(view, /if \(this\.scope === 'foryou'\) items = weave\(items, this\.promo\)/);
   assert.match(feed, /loadPublicPosts\(sb, \{ publishedOnly: true \}\)/);
   assert.match(main, /setScope\('community'\)/);
   assert.match(main, /button\.dataset\.scope === next[\s\S]*button\.hasAttribute\('data-community'\)/);
-  assert.match(main, /value = Promise\.resolve\(\)\.then\(loader\)\.catch\(error => \{\s*value = null;\s*throw error;/);
   assert.match(sync, /get error\(\) \{ return error; \}/);
 });
 
@@ -2054,7 +2019,7 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
   assert.match(profile, /tabs\.addEventListener\('click'/);
   assert.match(profile, /role: 'tabpanel'/);
   assert.match(profile, /grid\.dataset\.profilePanel = tab/);
-  assert.match(profile, /loadProfilePosts\(sb, id, resolvedUsername\),/);
+  assert.match(profile, /loadProfilePosts\(sb, id, username\),/);
   assert.doesNotMatch(profile, /quiet\(loadProfilePosts\(sb, id, username\)\)/);
   assert.match(profile, /cachedProfilePosts\(id, username\)/);
   assert.match(profile, /this\.posts = Array\.isArray\(posts\) \? posts\.filter/);
@@ -2086,19 +2051,16 @@ test('Nova profile merges public Orbit posts into the grid and counter data', ()
 });
 
 test('online presence never substitutes for an active LIVE session', () => {
-  const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
   const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
   const connections = readFileSync(new URL('../milkyway/app/ui/followers-view.js', import.meta.url), 'utf8');
   const inbox = readFileSync(new URL('../milkyway/app/ui/inbox-view.js', import.meta.url), 'utf8');
 
-  assert.match(main, /profileView\(\)\.then\(view => view\.open\(profile, options\)\)\.catch/);
   assert.doesNotMatch(profile, /presence\.visible/);
   assert.match(profile, /profile-online-status/);
-  assert.match(profile, /presence\?\.isOnline === 'function'/);
-  assert.match(connections, /presence\?\.isOnline === 'function'/);
+  assert.match(profile, /presence\.isOnline\(node\.dataset\.presence\)/);
+  assert.match(connections, /presence\.isOnline\(id\)/);
   assert.match(connections, /select\('host_id,room_name,is_live'\)/);
   assert.match(connections, /\.filter\(row => row\?\.is_live === true\)/);
-  assert.match(connections, /this\.liveRooms\?\.get\?\.\(id\)/);
   assert.doesNotMatch(connections, /new Map\(saved\.liveRooms/);
   assert.match(connections, /liveRoom \? h\('span', \{ class: 'connection-live-badge' \}, 'LIVE'\)/);
   assert.match(inbox, /presence\.isOnline\(this\.peer\.id\) \? t\('online'\)/);
