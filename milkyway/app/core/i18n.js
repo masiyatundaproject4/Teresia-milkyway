@@ -8,6 +8,7 @@ const strings = {
     exploreSearch: 'Search people, posts, #hashtags, sounds', exploreAll: 'All', explorePeople: 'People', exploreTags: 'Hashtags', exploreSounds: 'Sounds',
     exploreTrending: 'Trending hashtags', exploreNew: 'New posts', exploreResults: 'Posts', explorePeopleHint: 'Search people by name or @username',
     exploreLoadFailed: 'Could not load discovery content. Check your connection and retry.', exploreNoSounds: 'No sounds found in recent posts',
+    profileOpenFailed: 'This profile could not be opened.',
     explorePlaySound: 'Play original sound', exploreOriginalSound: 'Original sound', explorePost: 'Open post',
     tapForSound: 'Tap for sound', offline: 'Offline · showing saved posts', backOnline: 'Back online', empty: 'No posts yet. Be the first to post!',
     emptyFollowing: 'Follow creators to fill this feed', feedLoadFailed: 'Could not load posts. Check your connection and try again.', retry: 'Retry', loading: 'Loading…', comments: 'Comments',

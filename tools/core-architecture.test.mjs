@@ -67,7 +67,11 @@ test('Nova and profile taps route to an open profile sheet for IDs and handles',
   assert.match(feed, /const retryable = kind === 'offline' \|\| kind === 'feedLoadFailed'/);
   assert.match(profile, /this\.hooks\.onOpen\?\.\(\)/);
   assert.match(profile, /this\.hooks\.onClose\?\.\(\)/);
-  assert.match(profile, /h\('p', \{\}, t\('connectionLost'\)\)/);
+  assert.match(main, /toast\(t\('profileOpenFailed'\)\)/);
+  assert.doesNotMatch(main, /toast\(t\('connectionLost'\)\)/);
+  assert.match(profile, /#showLoadError\(\)[\s\S]*t\('profileOpenFailed'\)/);
+  assert.doesNotMatch(profile, /h\('p', \{\}, t\('connectionLost'\)\)/);
+  assert.doesNotMatch(profile, /#showLoadError\(id\)/);
   assert.match(sheet, /dispatchEvent\(new Event\('mw:sheetchange'\)\)/);
 });
 
@@ -2080,7 +2084,7 @@ test('online presence never substitutes for an active LIVE session', () => {
   const connections = readFileSync(new URL('../milkyway/app/ui/followers-view.js', import.meta.url), 'utf8');
   const inbox = readFileSync(new URL('../milkyway/app/ui/inbox-view.js', import.meta.url), 'utf8');
 
-  assert.match(main, /profileView\(\)\.then\(view => view\.open\(person\?\.id \? person : null, options\)\)\.catch/);
+  assert.match(main, /profileView\(\)\.then\(view => view\.open\(profile, options\)\)\.catch/);
   assert.doesNotMatch(profile, /presence\.visible/);
   assert.match(profile, /profile-online-status/);
   assert.match(profile, /presence\?\.isOnline === 'function'/);

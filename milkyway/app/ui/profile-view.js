@@ -720,16 +720,15 @@ export class ProfileView {
       this.#render({ profile: candidate || profiles.peek(id) || { id, name: this.own ? auth.name : '' }, loading: true });
     } catch (error) {
       console.error('[profile] Profile view could not be rendered.', error);
-      this.#showLoadError(id);
+      this.#showLoadError();
     }
     this.#pushProfileHistory();
     void this.#load(id);
   }
 
-  #showLoadError(id) {
+  #showLoadError() {
     this.content.replaceChildren(h('div', { class: 'empty-card profile-load-error' },
-      h('p', {}, t('connectionLost')),
-      h('button', { class: 'pill-btn', type: 'button', onclick: () => { void this.#load(id); } }, t('retry'))));
+      h('p', { role: 'status' }, t('profileOpenFailed'))));
   }
 
   openForPhoto(file) {
@@ -923,7 +922,7 @@ export class ProfileView {
     } catch (error) {
       if (token === this.token) {
         console.error('[profile] profile data could not be loaded.', error);
-        this.#showLoadError(id);
+        this.#showLoadError();
       }
     }
   }
@@ -987,7 +986,7 @@ export class ProfileView {
     return card;
   }
 
-  #render({ profile, followers = 0, following = 0, friends = 0, requests = 0, posts = [], loading = false, error = false, postsError = '' }) {
+  #render({ profile, followers = 0, following = 0, friends = 0, requests = 0, posts = [], loading = false, postsError = '' }) {
     profile = profile && typeof profile === 'object' ? profile : { id: this.id || auth.userId || '' };
     profile = {
       ...profile,
@@ -1070,7 +1069,7 @@ export class ProfileView {
       if (button && tabs.contains(button)) void this.#selectTab(button.dataset.profileTab);
     });
     if (loading) this.#renderGrid([], { loading: true });
-    else if (error || postsError) this.#renderGrid([], { message: profileText(postsError) || t('retry') });
+    else if (postsError) this.#renderGrid([], { message: profileText(postsError) || t('retry') });
     else void this.#selectTab(this.activeTab || 'posts');
 
     const coverUrl = profileText(profile.cover);

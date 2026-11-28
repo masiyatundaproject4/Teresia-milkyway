@@ -259,7 +259,7 @@ async function openProfile(person = null, options = {}) {
         }
       } catch (error) {
         console.error('[profile] Could not resolve profile username.', error);
-        toast(t('connectionLost'));
+        toast(t('profileOpenFailed'));
         return;
       }
     }
@@ -273,7 +273,7 @@ async function openProfile(person = null, options = {}) {
   const profile = personId ? { ...(candidate || {}), id: personId } : null;
   profileView().then(view => view.open(profile, options)).catch(error => {
     console.error('[profile] Could not open profile.', error);
-    toast(t('connectionLost'));
+    toast(t('profileOpenFailed'));
   });
 }
 function openCreate() {
